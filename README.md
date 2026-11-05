@@ -21,31 +21,12 @@ Built for the **Flip the Switch** hackathon (Nov 4–7, 2026).
 Switch is where the whole workflow happens. Without a Switch room there is no one to ask, no
 one to review, and nothing runs (`npm start` refuses to start without Switch).
 
-```
-      Slack / Discord / Teams / Telegram  ←→  Switch room
-                                                  │
-   coding agent ──"@litti propose {...}"──────────┤
-                                                  ▼
-                                          @litti (Switch agent)
-                                   tier 0-3 · reasons · quiz · link
-                                                  │
-   🔒 "Approval needed — Tier 2 · 2 reviewers" ◄──┘   posted to the room
-                                                  │
-   teammate ──"@litti review <id>"────────────────┤
-   ◄── personal signed review link ───────────────┘
-                                                  │
-                 review page: diff · quiz · server-timed · scroll check
-                                                  │
-              ┌───────────────────────────────────┴──────────┐
-         pass (×N reviewers)                           rubber-stamp
-              │                                              │
-   ✍️ "Priya countersigned (1/2)" → room       ⚠️ "@sam approved a 900-line
-   ✅ "Deploy executed · reviewed by …" → room     migration in 4s" → room,
-              │                                    reviews reset, next tier +1
-   signed token bound to the diff's SHA-256
-              │
-   deploy webhook → your CI/CD     ·     hash-chained receipt
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/architecture-dark.png">
+  <img alt="Litti architecture: a coding agent asks @litti in a Switch room; reviewers get a link from Discord, review on Litti's Fastify page; the gatekeeper tiers the action, the executor only deploys with a signed token, and every decision lands in a SQLite receipt chain" src="docs/images/architecture.png">
+</picture>
+
+<sub>Source: [docs/architecture.html](docs/architecture.html) (self-contained, open it in a browser).</sub>
 
 | In the Switch room | What happens |
 |---|---|
@@ -59,6 +40,68 @@ one to review, and nothing runs (`npm start` refuses to start without Switch).
 Under the hood Litti is a registered Switch agent: it registers once with `POST /agents`,
 long-polls `GET /agents/{id}/notifications` for messages addressed to it, and posts with
 `POST /agents/{id}/message` ([src/switch/client.ts](src/switch/client.ts)).
+
+---
+
+## System design
+
+### Approval flow
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant A as Coding agent
+    participant S as Switch room (Discord/Slack)
+    participant L as @litti
+    participant G as Gatekeeper
+    participant R as Reviewer
+    participant P as Review page
+    participant X as Executor
+    participant C as CI/CD
+
+    A->>S: @litti propose {action, diff, paths}
+    S->>L: addressed message
+    L->>G: assess(card)
+    G-->>L: tier 0-3, reasons, quiz
+    L->>S: 🔒 Approval needed: Tier 2 · 2 reviewers
+    R->>S: @litti review ID
+    S->>L: addressed message
+    L->>S: personal signed review link
+    R->>P: open link (server stamps open time)
+    R->>P: read diff · answer quiz · countersign
+    alt too fast / wrong answer
+        P->>S: ⚠️ rubber-stamp blocked, reviews reset, next tier +1
+    else passed, more reviewers needed
+        P->>S: ✍️ countersigned (1/2)
+    else all reviewers passed
+        P->>X: HMAC token bound to SHA-256(diff)
+        X->>C: signed webhook (action + token)
+        X->>S: ✅ deploy executed · reviewed by …
+    end
+    A->>S: @litti status ID
+    L->>S: APPROVED: run exactly this diff
+```
+
+### Components
+
+| Component | File | Responsibility |
+|---|---|---|
+| Switch client | [src/switch/client.ts](src/switch/client.ts) | Registers `@litti`, long-polls for mentions, posts into the room |
+| Chat commands | [src/switch/commands.ts](src/switch/commands.ts) | `propose`, `review`, `status`, `pending`, `verify`, `stats` |
+| Gatekeeper | [src/agents/gatekeeper.ts](src/agents/gatekeeper.ts), [src/rules/tiering.ts](src/rules/tiering.ts) | Deterministic tier 0–3 + quiz built from the diff's changed lines |
+| Review server | [src/approval/server.ts](src/approval/server.ts), [page.ts](src/approval/page.ts) | Review page, submit flow, agent + pipeline API, dashboard data |
+| Identity | [src/approval/identity.ts](src/approval/identity.ts) | Signed review links, SSO header, server-measured review time |
+| Rubber-stamp detector | [src/rules/rubberstamp.ts](src/rules/rubberstamp.ts) | Too fast, wrong answer, serial rubber-stamper |
+| Tokens | [src/approval/token.ts](src/approval/token.ts) | HMAC-SHA256 token bound to the diff hash and approvers |
+| Executor | [src/deploy/executor.ts](src/deploy/executor.ts) | Validates and burns the token, then signed webhook or deploy record |
+| Receipt chain | [src/chain/](src/chain/) | SQLite storage, SHA-256 hash-linked receipts, verification |
+
+### Data model
+
+- **ActionCard**: what the agent wants to do: action, description, diff, `diffHash`, touched paths, reversible, rollback plan.
+- **PendingAction**: card + tier + required reviewers + quiz (answer kept server-side) + approvals so far + status.
+- **ApprovalToken**: `{tokenId, actionId, diffHash, approvers, quizResults, signature}`, where `signature = HMAC(tokenId | diffHash | approvers)`.
+- **Receipt**: `chainHash = SHA-256(id + previousHash + card + outcome + attentionScore)`, and each receipt points to the previous one.
 
 ---
 

@@ -1,24 +1,53 @@
-/** Entry point. Starts the approval server; uses the Switch stub by default. */
+/** Production entry point. Validates config, joins Switch as @litti, serves review pages. */
 import 'dotenv/config';
-import { initDb } from './chain/db.js';
+import { initDb, closeDb } from './chain/db.js';
 import { buildServer, setSwitchClient } from './approval/server.js';
-import { createSwitchStub } from './agents/switchStub.js';
+import { connectSwitch } from './switch/client.js';
+import { createCommandHandler } from './switch/commands.js';
+import { checkProductionConfig } from './config.js';
 
 const PORT = Number(process.env.APPROVAL_SERVER_PORT) || 3847;
+const HOST = process.env.HOST || '127.0.0.1';
+const BASE = process.env.PUBLIC_URL || `http://127.0.0.1:${PORT}`;
+const DB_PATH = process.env.LITTI_DB_PATH || 'data/litti.db';
 
 async function main() {
-  if (!process.env.SECRET_KEY) {
-    console.error('❌ SECRET_KEY is not set. Copy .env.example to .env and set one. (Or run `npm run demo`.)');
+  const { errors, warnings } = checkProductionConfig();
+  for (const w of warnings) console.warn(`⚠️  ${w}`);
+  if (errors.length) {
+    for (const e of errors) console.error(`❌ ${e}`);
     process.exit(1);
   }
   console.log('🔒 Litti starting...');
-  initDb('litti.db');
-  setSwitchClient(createSwitchStub());
 
-  const app = buildServer();
-  await app.listen({ port: PORT, host: '127.0.0.1' });
-  console.log(`🔑 Approval server on http://127.0.0.1:${PORT}`);
-  console.log(`📊 Dashboard: http://127.0.0.1:${PORT}/dashboard.html`);
+  // Switch is where requests, reviews and results happen. No Switch, no Litti.
+  const sw = await connectSwitch();
+  initDb(DB_PATH);
+  setSwitchClient(sw);
+
+  const app = buildServer({ logger: true });
+  await app.listen({ port: PORT, host: HOST });
+  console.log(`🔑 Review pages on ${BASE}`);
+  console.log(`📊 Dashboard: ${BASE}/dashboard.html`);
+  console.log(`💬 In your Switch room, try: @${process.env.SWITCH_AGENT_NAME || 'litti'} help`);
+
+  void sw.listen(createCommandHandler(BASE));
+
+  let stopping = false;
+  const shutdown = async (signal: string) => {
+    if (stopping) return;
+    stopping = true;
+    console.log(`\n${signal} received — shutting down.`);
+    sw.stop();
+    await app.close().catch(() => {});
+    closeDb();
+    process.exit(0);
+  };
+  process.on('SIGINT', () => void shutdown('SIGINT'));
+  process.on('SIGTERM', () => void shutdown('SIGTERM'));
 }
 
-main().catch((err) => { console.error('❌', err); process.exit(1); });
+main().catch((err) => {
+  console.error('❌', err instanceof Error ? err.message : String(err));
+  process.exit(1);
+});

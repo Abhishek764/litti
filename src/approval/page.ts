@@ -33,8 +33,16 @@ export function renderApprovalPage(args: {
   approvalsSoFar: number;
   quiz: Quiz;
   approver: string;
+  /** Identity came from SSO or a signed review link: name can't be edited. */
+  identityLocked: boolean;
+  /** Typed names allowed (demo mode). */
+  allowTyped: boolean;
+  /** Signed page-open stamp; the server measures review time from it. */
+  viewStamp: string;
+  /** Signed review ticket from the link, if any. */
+  ticket: string;
 }): string {
-  const { card, tier, reasons, requiredApprovers, approvalsSoFar, quiz, approver } = args;
+  const { card, tier, reasons, requiredApprovers, approvalsSoFar, quiz, approver, identityLocked, allowTyped, viewStamp, ticket } = args;
   const meta = TIER_META[tier];
   const lineCount = card.diff.split('\n').length;
   const options = quiz.options.map((opt, i) =>
@@ -43,7 +51,7 @@ export function renderApprovalPage(args: {
 
   return `<!doctype html><html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Litti — Countersign</title>
+<title>Litti — Countersign</title><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Ctext y=%27.9em%27 font-size=%2790%27%3E%F0%9F%94%92%3C/text%3E%3C/svg%3E">
 <style>
 :root{
   --bg:#0d1117;--surface:#161b22;--border:#30363d;--text:#e6edf3;--text-muted:#8b949e;
@@ -71,9 +79,11 @@ h1{font-size:20px;margin:0 0 4px;letter-spacing:.5px}
 .opt{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:6px;margin-bottom:8px;cursor:pointer;font-family:var(--font-mono);font-size:13px}
 .opt:hover{border-color:var(--blue)}
 .chkrow{display:flex;align-items:center;gap:10px;margin:16px 0}
-label.q{font-weight:600;display:block;margin-bottom:12px}
+.q{font-weight:600;display:block;margin-bottom:12px}
 button{background:var(--blue);color:#06101f;border:0;border-radius:8px;padding:12px 22px;font-size:15px;font-weight:700;cursor:pointer}
 button:disabled{opacity:.4;cursor:not-allowed}
+.idnote{font-size:12px;color:var(--text-muted);margin-top:6px}
+.idnote code{font-family:var(--font-mono);color:var(--blue)}
 .timer{font-family:var(--font-mono);color:var(--text-muted);font-size:12px;margin-left:auto}
 #result{margin-top:16px;font-weight:600}
 .ok{color:var(--green)}.bad{color:var(--red)}
@@ -87,7 +97,7 @@ button:disabled{opacity:.4;cursor:not-allowed}
   <div class="row">
     <span class="badge" style="background:${meta.color}">TIER ${tier} · ${meta.label}</span>
     <span>${esc(card.action.toUpperCase())}</span>
-    <span class="timer" id="timer">0.0s on page</span>
+    <span class="timer" id="timer">0.0s on page</span><span class="timer" style="margin-left:10px;opacity:.7">min review ${tier >= 2 ? 30 : 10}s</span>
   </div>
   <div class="meta">${esc(card.description)}</div>
   <div class="meta">Approvers: <strong>${approvalsSoFar}/${requiredApprovers}</strong> · Paths: ${card.touchedPaths.map(esc).join(', ')} · Reversible: ${card.reversible ? 'yes' : 'no'}</div>
@@ -100,14 +110,17 @@ button:disabled{opacity:.4;cursor:not-allowed}
 </div>
 
 <div class="card">
-  <label class="q">${esc(quiz.question)}</label>
+  <div class="q" id="quizq">${esc(quiz.question)}</div>
   ${options}
 </div>
 
 <div class="card">
   <input type="hidden" id="actionId" value="${esc(card.id)}">
-  <label class="q">Approver</label>
-  <input id="approver" value="${esc(approver)}" style="width:100%;padding:10px;background:#0a0d12;border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-mono)">
+  <label class="q" for="approver">Approver</label>
+  <input id="approver" value="${esc(approver)}" ${identityLocked ? 'readonly' : ''} placeholder="${allowTyped ? 'Your name' : 'Open your personal link from Switch'}" style="width:100%;padding:10px;background:#0a0d12;border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-mono)">
+  <div class="idnote">${identityLocked ? '🔐 Verified reviewer' : allowTyped ? 'Demo mode: typed names accepted.' : '🔐 Send <code>@litti review ' + esc(card.id) + '</code> in your Switch room to get your personal review link.'}</div>
+  <input type="hidden" id="viewStamp" value="${esc(viewStamp)}">
+  <input type="hidden" id="ticket" value="${esc(ticket)}">
   <div class="chkrow"><input type="checkbox" id="reviewed"><label for="reviewed">I have reviewed this change.</label></div>
   <button id="submit" disabled>Countersign</button>
   <div id="result"></div>
@@ -138,7 +151,9 @@ btn.addEventListener('click',async()=>{
   btn.disabled=true;
   const body={
     actionId:document.getElementById('actionId').value,
-    approver:document.getElementById('approver').value||'anonymous',
+    approver:document.getElementById('approver').value,
+    viewStamp:document.getElementById('viewStamp').value,
+    ticket:document.getElementById('ticket').value,
     quizAnswer:selectedAnswer(),
     timeSpentMs:Date.now()-start,
     scrolledToBottom:scrolled,

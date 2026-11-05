@@ -44,6 +44,8 @@ export interface ApprovalSubmission {
   timeSpentMs: number;
   scrolledToBottom: boolean;
   timestamp: string;
+  /** How the reviewer was identified: SSO header, signed review link, or typed name. */
+  identitySource?: 'sso' | 'ticket' | 'self-asserted';
 }
 
 /** Per-approver quiz result embedded in a token. */

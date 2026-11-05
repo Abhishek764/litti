@@ -1,4 +1,7 @@
-/** Standalone demo runner. Works with zero Switch dependency. `npm run demo`. */
+/**
+ * Demo runner. `npm run demo` posts into your Switch room when Switch is set up,
+ * and falls back to an offline console stub otherwise (or with --offline).
+ */
 import 'dotenv/config';
 import { readFileSync, rmSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -8,6 +11,8 @@ import open from 'open';
 import { initDb, enableDemoTamper } from './chain/db.js';
 import { buildServer, setSwitchClient, registerPending } from './approval/server.js';
 import { createSwitchStub } from './agents/switchStub.js';
+import { connectSwitch, type LiveSwitch } from './switch/client.js';
+import { createCommandHandler } from './switch/commands.js';
 import { buildActionCard } from './agents/builder.js';
 import type { ActionKind } from './types.js';
 
@@ -16,6 +21,9 @@ const DIFFS = join(__dirname, '..', 'demo', 'sample-diffs');
 
 // Ephemeral per-run key so the standalone demo signs tokens without setup.
 if (!process.env.SECRET_KEY) process.env.SECRET_KEY = randomBytes(32).toString('hex');
+// Demo: reviewers can type a name (Sam, Priya) or use `@litti review <id>` links from Switch.
+process.env.LITTI_ALLOW_SELF_ASSERTED ??= 'true';
+process.env.LITTI_DEPLOY_DIR ??= 'deployments';
 const PORT = Number(process.env.APPROVAL_SERVER_PORT) || 3847;
 const BASE = `http://127.0.0.1:${PORT}`;
 
@@ -25,12 +33,19 @@ async function main() {
   console.log('🔒 Litti starting...');
 
   // Fresh database each demo run.
-  for (const f of ['litti.db', 'litti.db-wal', 'litti.db-shm']) {
+  for (const f of ['litti-demo.db', 'litti-demo.db-wal', 'litti-demo.db-shm']) {
     if (existsSync(f)) rmSync(f, { force: true });
   }
-  initDb('litti.db');
+  initDb('litti-demo.db');
   enableDemoTamper();
-  setSwitchClient(createSwitchStub());
+
+  let sw: LiveSwitch | null = null;
+  if (!process.argv.includes('--offline')) {
+    try { sw = await connectSwitch(); }
+    catch (err) { console.warn(`⚠️  ${(err as Error).message}
+   Running offline: room messages print here instead.`); }
+  }
+  setSwitchClient(sw ?? createSwitchStub());
 
   const app = buildServer();
   await app.listen({ port: PORT, host: '127.0.0.1' });
@@ -76,8 +91,14 @@ async function main() {
   console.log('\n👉 Open an approval link, read the diff, pass the quiz, Countersign.');
   console.log('   Approved actions deploy and appear on the dashboard.\n');
 
-  await open(urls[0]);
-  await open(`${BASE}/dashboard.html`);
+  if (sw) {
+    void sw.listen(createCommandHandler(BASE));
+    console.log('💬 Approval cards are in your Switch room. Try: @litti pending');
+  }
+  if (!process.argv.includes("--no-open")) {
+    await open(urls[0]);
+    await open(`${BASE}/dashboard.html`);
+  }
 }
 
 main().catch((err) => { console.error('❌', err); process.exit(1); });

@@ -1,5 +1,7 @@
 /** SQLite schema init + query helpers. Synchronous better-sqlite3. */
 import Database from 'better-sqlite3';
+import { mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
 import type { Receipt, PendingAction } from '../types.js';
 
 let db: Database.Database;
@@ -14,8 +16,10 @@ export function enableDemoTamper(): void {
 
 /** Open (or create) the database and ensure schema exists. */
 export function initDb(path = 'litti.db'): Database.Database {
+  if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
   db = new Database(path);
   db.pragma('journal_mode = WAL');
+  db.pragma('busy_timeout = 5000');
   db.exec(`
     CREATE TABLE IF NOT EXISTS receipts (
       id TEXT PRIMARY KEY,
@@ -45,7 +49,14 @@ export function initDb(path = 'litti.db'): Database.Database {
       token_id TEXT PRIMARY KEY,
       consumed_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
   `);
+  // Additive migrations for databases created by older versions.
+  const cols = (db.prepare('PRAGMA table_info(pending_actions)').all() as { name: string }[]).map(c => c.name);
+  if (!cols.includes('approval_token')) db.exec('ALTER TABLE pending_actions ADD COLUMN approval_token TEXT');
   return db;
 }
 
@@ -145,6 +156,39 @@ export function getPending(id: string): PendingAction | null {
     status: row.status,
     createdAt: row.created_at,
   };
+}
+
+/** Close the database (graceful shutdown). */
+export function closeDb(): void {
+  if (db?.open) db.close();
+}
+
+/** Read a persisted setting. */
+export function getSetting(key: string): string | null {
+  const row = getDb().prepare('SELECT value FROM settings WHERE key = ?').get(key) as { value: string } | undefined;
+  return row?.value ?? null;
+}
+
+/** Write a persisted setting. */
+export function setSetting(key: string, value: string): void {
+  getDb().prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(key, value);
+}
+
+/** Store the signed approval token on an approved action. */
+export function setApprovalToken(id: string, token: unknown): void {
+  getDb().prepare('UPDATE pending_actions SET approval_token = ? WHERE id = ?').run(JSON.stringify(token), id);
+}
+
+/** The signed approval token for an approved action, if any. */
+export function getApprovalToken(id: string): unknown | null {
+  const row = getDb().prepare('SELECT approval_token FROM pending_actions WHERE id = ?').get(id) as { approval_token: string | null } | undefined;
+  return row?.approval_token ? JSON.parse(row.approval_token) : null;
+}
+
+/** All actions still awaiting approval, oldest first. */
+export function listPending(): PendingAction[] {
+  const rows = getDb().prepare("SELECT id FROM pending_actions WHERE status = 'pending' ORDER BY created_at").all() as { id: string }[];
+  return rows.map(r => getPending(r.id)!).filter(Boolean);
 }
 
 /** Update a pending action's approvals + status. */

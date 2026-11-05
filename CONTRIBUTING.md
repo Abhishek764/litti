@@ -12,7 +12,7 @@ npm test          # typecheck + end-to-end smoke test
 npm run demo      # full standalone demo in your browser
 ```
 
-Requires Node.js 20+.
+Requires Node.js 20.10+. For the full flow, install [Switch Console](https://docs.switchagents.ai/switch-rooms/getting-started); `npm run demo:offline` works without it.
 
 ## Project layout
 
@@ -20,11 +20,12 @@ Requires Node.js 20+.
 |------|------------------|
 | `src/rules/` | Deterministic risk tiering and rubber-stamp detection |
 | `src/agents/` | Builder (proposes ActionCards) and gatekeeper (tiers + quiz) |
-| `src/approval/` | Fastify server, approval page HTML, signed tokens |
+| `src/approval/` | Fastify server, review page HTML, signed tokens, reviewer identity |
+| `src/switch/` | Switch agent client (register, post, listen) and `@litti` chat commands |
 | `src/chain/` | SQLite storage, hash-chained receipts, chain verification |
 | `src/deploy/` | Token-gated executor |
 | `public/` | Dashboard (plain HTML/CSS/JS) |
-| `test/` | Smoke tests |
+| `test/` | Core flow, production hardening, and Switch client (mock bridge) tests |
 
 ## Ground rules
 
@@ -37,7 +38,8 @@ Requires Node.js 20+.
 
 - New quiz templates in `src/agents/gatekeeper.ts` (e.g. Terraform, Kubernetes manifests, package.json bumps)
 - New tiering rules for your stack in `src/rules/tiering.ts`
-- Real chat integrations behind the `SwitchClient` interface (Slack, Discord, GitHub PR comments)
+- More `@litti` room commands in `src/switch/commands.ts` (e.g. `reject`, `explain`)
+- Deploy webhook receivers for popular CI systems (GitHub Actions, GitLab CI, Argo CD)
 - Accessibility improvements on the approval page and dashboard
 
 ## Pull requests

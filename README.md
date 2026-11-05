@@ -6,180 +6,217 @@
 
 > Developers approve 93% of AI coding agent permission prompts. At that rate, Allow is just a slower Continue.
 
-Litti is a lie detector for the Approve button. It proves a human actually *read*
-what they approved before an AI agent is allowed to act.
+Litti is an approval gate that lives in your team's **Switch** room. When a coding agent wants to
+do something risky (run a migration, deploy, delete data), it has to ask `@litti` first. Litti
+works out how risky the action is, asks the right number of teammates to review it, makes each
+reviewer prove they read the diff, and only then lets the action run. Every decision is written
+to a tamper-evident receipt chain.
 
-Built for the **Flip the Switch** Hackathon (Nov 4–7, 2026).
-
----
-
-## What Litti does
-
-1. **Builder agent** proposes an action with the full diff.
-2. **Independent gatekeeper** tiers the risk (Tier 0–3) with deterministic rules.
-3. **Humans open an approval page** — see the diff, answer a comprehension quiz.
-4. **Rubber-stamp detector** catches approvals too fast or too careless to be real.
-5. **Deploy only runs with a cryptographic token** bound to the exact approved diff — change one byte and the token is dead.
-6. **Every decision is a hash-chained receipt** — tamper with one and the chain breaks.
+Built for the **Flip the Switch** hackathon (Nov 4–7, 2026).
 
 ---
 
-## Architecture
+## How Litti uses Switch
+
+Switch is where the whole workflow happens. Without a Switch room there is no one to ask, no
+one to review, and nothing runs (`npm start` refuses to start without Switch).
 
 ```
-Builder Agent ──→ ActionCard ──→ Gatekeeper (independent)
-                                      │
-                                 Risk Tier 0-3
-                                      │
-                             ┌────────┴────────┐
-                        Tier 0: Auto       Tier 1-3:
-                        (log + run)     Approval Page
-                                                │
-                                        Quiz + Timer + Scroll
-                                                │
-                                        ┌───────┴───────┐
-                                     Pass            Fail
-                                        │               │
-                                Signed Token     "Read it again"
-                                        │
-                                Deploy Executor
-                             (token must match exact diff hash)
-                                        │
-                                 Receipt Chain
-                              (hash-linked, tamper-evident)
+      Slack / Discord / Teams / Telegram  ←→  Switch room
+                                                  │
+   coding agent ──"@litti propose {...}"──────────┤
+                                                  ▼
+                                          @litti (Switch agent)
+                                   tier 0-3 · reasons · quiz · link
+                                                  │
+   🔒 "Approval needed — Tier 2 · 2 reviewers" ◄──┘   posted to the room
+                                                  │
+   teammate ──"@litti review <id>"────────────────┤
+   ◄── personal signed review link ───────────────┘
+                                                  │
+                 review page: diff · quiz · server-timed · scroll check
+                                                  │
+              ┌───────────────────────────────────┴──────────┐
+         pass (×N reviewers)                           rubber-stamp
+              │                                              │
+   ✍️ "Priya countersigned (1/2)" → room       ⚠️ "@sam approved a 900-line
+   ✅ "Deploy executed · reviewed by …" → room     migration in 4s" → room,
+              │                                    reviews reset, next tier +1
+   signed token bound to the diff's SHA-256
+              │
+   deploy webhook → your CI/CD     ·     hash-chained receipt
 ```
+
+| In the Switch room | What happens |
+|---|---|
+| `@litti propose` + JSON | Agent (or person) asks permission. Litti posts the tier, reasons and review link. |
+| `@litti review <id>` | Litti replies with **your** signed review link. It records you as the reviewer, so nobody can approve under someone else's name. |
+| *(automatic)* | Progress (`✍️ 1/2`), rubber-stamp warnings, and deploy results are posted back to the room. |
+| `@litti status <id>` | Agent checks whether it may proceed. |
+| `@litti pending` · `verify` · `stats` | Queue, tamper check of the receipt chain, reviewer attention scores. |
+| `@litti approve` | Refused. Approval never happens in chat. You have to read the diff. |
+
+Under the hood Litti is a registered Switch agent: it registers once with `POST /agents`,
+long-polls `GET /agents/{id}/notifications` for messages addressed to it, and posts with
+`POST /agents/{id}/message` ([src/switch/client.ts](src/switch/client.ts)).
 
 ---
 
-## How to use
+## What Litti checks
 
-### 1. Try it in 2 minutes (no setup)
+1. **Risk tier (0–3)** from deterministic rules: critical paths (`migration`, `auth`, `prod`, `.env`…), diff size, destructive commands (`DROP`, `DELETE FROM`, `rm -rf`), irreversibility.
+2. **Enough distinct reviewers**: Tier 1 = 1, Tier 2 = 2, Tier 3 = 3. The requester can't review their own action, and nobody counts twice.
+3. **Comprehension quiz** generated from the diff itself ("What does `border-radius` change to?", "Which table does this migration alter?").
+4. **Real reading time**, measured by the server from a signed page-open stamp. The browser's clock is never trusted.
+5. **Scrolled to the end** of long diffs.
+6. **Rubber-stamp detector**: too fast on a big diff, wrong quiz answer, or a serial rubber-stamper. It's blocked, announced in the room, every review on the action is reset, and the next action's tier goes up by one.
+7. **Diff-bound token**: an HMAC-signed token tied to the SHA-256 of the exact approved diff. Change one byte and it's dead. Tokens are single-use.
+8. **Receipt chain**: every decision is SHA-256 hash-linked to the previous one. Editing history breaks the chain visibly.
+
+---
+
+## Quick start (local, about 5 minutes)
+
+**Requirements:** Node.js 20.10+, [Switch Console](https://docs.switchagents.ai/switch-rooms/getting-started) with a local server, and a chat app connected to a room.
 
 ```bash
 git clone https://github.com/Abhishek764/litti.git
 cd litti
 npm install
+cp .env.example .env
+```
+
+Edit `.env`:
+
+```bash
+SECRET_KEY=<run: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))">
+SWITCH_API_URL=http://127.0.0.1:64300      # Switch Console → server address
+SWITCH_REGISTRATION_KEY=<Switch Console → Settings → API keys → Create Registration Key>
+```
+
+Run the demo (three sample actions, posted into your room):
+
+```bash
 npm run demo
 ```
 
-Your browser opens an approval page and the dashboard. Follow [`demo/scenarios.md`](demo/scenarios.md):
-approve a CSS fix, get caught rubber-stamping a migration, then break and verify the receipt chain.
+On first run Litti registers itself as the `litti` agent and saves its own credentials to
+`.litti-switch.json`. **Add `litti` to your room** in Switch Console, then type `@litti help` in
+the room.
 
-### 2. Run it for your team
+No Switch handy? `npm run demo:offline` runs the same flow with room messages printed to the terminal.
 
-```bash
-cp .env.example .env
-# edit .env: set SECRET_KEY to a long random string (e.g. `openssl rand -hex 32`)
-#            set LITTI_API_KEY so only your agents can submit actions
-#            set PUBLIC_URL to the address reviewers will open
-npm start
+Walk through the three demo scenarios: [demo/scenarios.md](demo/scenarios.md).
+
+---
+
+## Connect your coding agent
+
+Give your agent this rule (in its Switch room instructions or system prompt). A copy-paste version is in [docs/agent-instructions.md](docs/agent-instructions.md).
+
+> Before any migration, deploy, delete, or change to auth/security/prod config, ask for approval
+> in this room with `@litti propose` and a JSON block, then wait. Check with
+> `@litti status <id>`. Only proceed when it says **APPROVED**.
+
+```json
+{
+  "action": "migrate",
+  "description": "Add MFA columns to users",
+  "diff": "+ALTER TABLE users ADD COLUMN mfa_enabled BOOLEAN NOT NULL DEFAULT FALSE;",
+  "touchedPaths": ["migrations/20261105_add_mfa.sql"],
+  "reversible": true,
+  "rollbackPlan": "Remove the mfa_enabled column."
+}
 ```
 
-| Variable | Required | Purpose |
-|----------|----------|---------|
-| `SECRET_KEY` | yes | Signs approval tokens (HMAC-SHA256) |
-| `APPROVAL_SERVER_PORT` | no | Defaults to `3847` |
-| `LITTI_API_KEY` | recommended | Agents must send it as the `x-litti-key` header |
-| `PUBLIC_URL` | no | Base URL used in approval links |
-
-Put the server behind your SSO or reverse proxy so approver names map to real people.
-
-### 3. Connect your AI agent
-
-Before your agent does anything risky, it proposes the action:
+Agents that prefer HTTP can call the same flow directly. It still posts to the Switch room:
 
 ```bash
 curl -X POST http://127.0.0.1:3847/api/actions \
-  -H "content-type: application/json" \
-  -H "x-litti-key: $LITTI_API_KEY" \
-  -d '{
-    "agent": "my-agent",
-    "action": "migrate",
-    "description": "Add MFA columns to users",
-    "diff": "+ALTER TABLE users ADD COLUMN mfa_enabled BOOLEAN;",
-    "touchedPaths": ["migrations/20261105_add_mfa.sql"],
-    "reversible": true,
-    "rollbackPlan": "Remove the mfa_enabled column."
-  }'
+  -H "content-type: application/json" -H "x-litti-key: $LITTI_API_KEY" \
+  -d @action.json
+# → { "id": "…", "tier": 2, "status": "pending", "approvalUrl": "…" }
+
+curl -H "x-litti-key: $LITTI_API_KEY" http://127.0.0.1:3847/api/actions/<id>
+# → { "status": "approved", "token": { …signed, diff-bound… } }
 ```
 
-Response:
+---
 
-```json
-{ "ok": true, "id": "…", "tier": 2, "status": "pending", "approvalUrl": "http://…/approve/…" }
-```
-
-- Share `approvalUrl` with reviewers (chat, PR comment, ticket).
-- Read-only actions (`read`, `lint`, `format`, `test`) are Tier 0 and run immediately.
-- Poll until reviewers finish:
+## Running it for your company
 
 ```bash
-curl http://127.0.0.1:3847/api/actions/<id>
-# { "status": "pending" | "approved", "approvals": 1, "requiredApprovers": 2 }
+docker compose up -d        # uses .env, stores data in a volume, health-checked
 ```
 
-When enough reviewers pass the quiz, Litti issues a token bound to the exact diff and runs the
-executor. If the agent changes even one byte of the diff, the token no longer matches and the
-deploy is blocked.
+or `npm start` on any Node 20.10+ host. `npm start` validates the config and refuses to start with a weak `SECRET_KEY` or without Switch.
 
-### 4. Review and audit
+| Variable | Purpose |
+|---|---|
+| `SECRET_KEY` | **Required.** 32+ random chars. Signs approval tokens, review links, view stamps. |
+| `SWITCH_API_URL` | Switch agent bridge (default `http://127.0.0.1:64300`). |
+| `SWITCH_REGISTRATION_KEY` | First run only: lets Litti register as the `litti` agent. |
+| `SWITCH_ROOM_ID` | Optional default room; otherwise the room that last mentioned `@litti`. |
+| `PUBLIC_URL` | Base URL reviewers open (use https in production). |
+| `LITTI_API_KEY` | Required header `x-litti-key` for the HTTP agent/pipeline API. |
+| `LITTI_IDENTITY_HEADER` | Trust a header from your SSO proxy (e.g. `x-forwarded-email`) as reviewer identity. |
+| `LITTI_DEPLOY_WEBHOOK` | Approved actions are POSTed here, signed in `x-litti-signature` (HMAC-SHA256). |
+| `LITTI_WEBHOOK_SECRET` | Webhook signing key (defaults to `SECRET_KEY`). |
+| `LITTI_DB_PATH` | SQLite file (default `data/litti.db`). |
+| `LITTI_ALLOW_SELF_ASSERTED` | `true` lets reviewers type a name. Demo only. Leave unset in production. |
+| `HOST`, `APPROVAL_SERVER_PORT`, `LOG_LEVEL`, `TRUST_PROXY` | Server settings. |
 
-- Reviewers open the link, read the diff, answer the quiz, and click **Countersign**.
-- Open `/dashboard.html` to see every receipt, attention scores, per-reviewer stats, and **Verify Chain**.
+**Reviewer identity**, strongest first: your SSO proxy header → a signed `@litti review` link
+(bound to one action and one Switch user, expires in 30 min) → typed name (demo only).
 
-### 5. Make it yours
+**Wiring deploys:** point `LITTI_DEPLOY_WEBHOOK` at your CI/CD. Verify the signature, then deploy
+`action.diff`. Before shipping, a pipeline can double-check with
+`POST /api/tokens/verify {token, diff}`. It returns `valid: false` if the diff changed even one byte.
+Example receiver: [docs/webhook-receiver.md](docs/webhook-receiver.md).
 
-- **Risk rules:** edit `src/rules/tiering.ts` to add your critical paths (infra, billing, payments).
-- **Quiz templates:** add patterns in `src/agents/gatekeeper.ts` for your stack.
-- **Real deploys:** replace the mock in `src/deploy/executor.ts` with your deploy command. It only runs after the token checks pass.
-- **Chat notifications:** implement the `SwitchClient` interface in `src/types.ts` for Slack, Discord, or Teams.
+**Tuning:** add your own critical paths in [src/rules/tiering.ts](src/rules/tiering.ts) and quiz templates in [src/agents/gatekeeper.ts](src/agents/gatekeeper.ts).
 
-### API reference
+### API
 
-| Method | Path | Purpose |
-|--------|------|---------|
-| `POST` | `/api/actions` | Agent proposes an action; returns tier + approval link |
-| `GET` | `/api/actions/:id` | Action status (never exposes the quiz answer) |
-| `GET` | `/approve/:id` | Approval page for reviewers |
-| `POST` | `/approve/:id/submit` | Reviewer submission (used by the page) |
-| `GET` | `/api/receipts` | All receipts, newest first |
-| `GET` | `/api/chain/verify` | Verify every link of the receipt chain |
-| `GET` | `/api/stats` | Per-reviewer attention and rubber-stamp stats |
-
-See [SECURITY.md](SECURITY.md) for deployment notes.
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `POST` | `/api/actions` | `x-litti-key` | Propose an action → tier + review link (posted to Switch) |
+| `GET` | `/api/actions/:id` | `x-litti-key` | Status; includes the signed token once approved |
+| `POST` | `/api/tokens/verify` | `x-litti-key` | Check a token against the diff you're about to ship |
+| `GET` | `/approve/:id` | review link / SSO | Review page |
+| `GET` | `/api/receipts` · `/api/chain/verify` · `/api/stats` | — | Dashboard data |
+| `GET` | `/healthz` | — | Health check |
 
 ---
 
-## How the guarantees work
+## Guarantees
 
 | Guarantee | Mechanism |
-|-----------|-----------|
-| Can't act without approval | Deploy executor refuses without a valid token |
-| Can't fake comprehension | Quiz answer validated server-side; min dwell time; scroll check |
-| Can't swap the diff after approval | Token's `diffHash` must equal SHA-256 of the current diff |
-| Can't replay an approval | Tokens are single-use (consumed in SQLite) |
-| Can't quietly edit history | Receipts are SHA-256 hash-chained; Verify Chain detects any change |
-| Can't rubber-stamp | Fast/careless approvals are flagged and bump the next action's tier |
+|---|---|
+| Can't act without approval | Executor refuses without a valid, unused token |
+| Can't approve as someone else | SSO header or signed, expiring, per-action review link |
+| Can't approve your own request | Requester excluded; each reviewer counts once |
+| Can't fake reading | Server-measured time from a signed stamp, server-side quiz check, scroll check |
+| Can't swap the diff after approval | Token is bound to the diff's SHA-256 |
+| Can't replay an approval | Tokens are single-use |
+| Can't quietly edit history | Hash-chained receipts; `@litti verify` / dashboard detect any change |
+| Rubber-stamps have a cost | Blocked, announced in the room, reviews reset, next tier +1 (persisted) |
+
+See [SECURITY.md](SECURITY.md) for the threat model and deployment notes.
 
 ---
 
-## Tech
+## Development
 
-Node.js + TypeScript · Fastify · better-sqlite3 · Node `crypto` (SHA-256 + HMAC) ·
-plain HTML/CSS/JS (no frontend framework, no build step for the pages).
+```bash
+npm test     # typecheck + 27 checks: core flow, production hardening, Switch client (mock bridge)
+```
 
-## Switch integration
-
-The standalone demo is the priority and needs no Switch install. When connected to a
-Switch room, the builder and gatekeeper agents post ActionCards, approval links, and
-rubber-stamp warnings to the room via the `SwitchClient` interface
-([`src/agents/switchStub.ts`](src/agents/switchStub.ts) is the drop-in local stub).
+Stack: Node.js + TypeScript · Fastify · SQLite (better-sqlite3) · Node `crypto` · plain HTML/CSS/JS. No frontend framework, no LLM in the trust path.
 
 ## Contributing
 
-Issues and PRs welcome — new quiz templates, tiering rules and chat integrations are great first contributions. Start with [CONTRIBUTING.md](CONTRIBUTING.md). Run `npm test` before opening a PR.
-
-Please report security bypasses privately (see [SECURITY.md](SECURITY.md)).
+Issues and PRs are welcome. New quiz templates, tiering rules and integrations make good first contributions. Start with [CONTRIBUTING.md](CONTRIBUTING.md). Report security bypasses privately ([SECURITY.md](SECURITY.md)).
 
 ## License
 

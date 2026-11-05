@@ -1,13 +1,14 @@
 {
   "name": "litti",
   "version": "1.0.0",
-  "description": "A lie detector for the Approve button. Proves humans read what they approved before AI agents act.",
+  "description": "Approval gate for AI coding agents in Switch rooms: risk tiering, comprehension quizzes, rubber-stamp detection, diff-bound tokens, tamper-evident receipts.",
   "type": "module",
   "scripts": {
-    "demo": "tsx src/demo.ts",
     "start": "tsx src/index.ts",
-    "build": "tsc",
-    "test": "tsc --noEmit && tsx test/smoke.ts"
+    "demo": "tsx src/demo.ts",
+    "demo:offline": "tsx src/demo.ts --offline",
+    "typecheck": "tsc --noEmit",
+    "test": "tsc --noEmit && tsx test/smoke.ts && tsx test/production.ts && tsx test/switch.ts"
   },
   "dependencies": {
     "@fastify/formbody": "^8.0.1",
@@ -15,12 +16,12 @@
     "better-sqlite3": "^11.5.0",
     "dotenv": "^16.4.5",
     "fastify": "^5.1.0",
-    "open": "^10.1.0"
+    "open": "^10.1.0",
+    "tsx": "^4.19.2"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.11",
     "@types/node": "^22.9.0",
-    "tsx": "^4.19.2",
     "typescript": "^5.6.3"
   },
   "license": "MIT",
@@ -33,7 +34,7 @@
     "url": "https://github.com/Abhishek764/litti/issues"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=20.10"
   },
   "keywords": [
     "ai-agents",

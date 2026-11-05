@@ -1,22 +1,31 @@
 /** End-to-end smoke test: tiering, quiz gate, rubber-stamp, tokens, deploy, chain tamper. */
-import { readFileSync, readdirSync, rmSync } from 'node:fs';
+import { readFileSync, readdirSync, rmSync, mkdtempSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import assert from 'node:assert/strict';
 process.env.SECRET_KEY = 'test-secret-'.repeat(6);
+process.env.LITTI_ALLOW_SELF_ASSERTED = 'true';
+const DEPLOY_DIR = mkdtempSync(join(tmpdir(), 'litti-deploy-'));
+process.env.LITTI_DEPLOY_DIR = DEPLOY_DIR;
 import { initDb, enableDemoTamper, getPending } from '../src/chain/db.js';
 import { buildServer, setSwitchClient, registerPending } from '../src/approval/server.js';
 import { buildActionCard } from '../src/agents/builder.js';
+import { generateQuiz } from '../src/agents/gatekeeper.js';
+import { createCommandHandler } from '../src/switch/commands.js';
+import { issueViewStamp } from '../src/approval/identity.js';
 import type { ActionKind } from '../src/types.js';
 
 initDb(':memory:');
 enableDemoTamper();
-setSwitchClient({ postMessage: () => {} } as any);
+const room: string[] = [];
+setSwitchClient({ postCard: (_c, a, url) => { room.push(`CARD ${a.tier} ${url}`); }, postMessage: (m) => { room.push(m); } });
 const app = buildServer();
 
 const card = (file: string, action: ActionKind, paths: string[], reversible = true) =>
   buildActionCard({ action, description: file, diff: readFileSync(`demo/sample-diffs/${file}`, 'utf8'), touchedPaths: paths, reversible, rollbackPlan: 'revert' });
 
 const submit = (id: string, approver: string, quizAnswer: string, timeSpentMs: number) =>
-  app.inject({ method: 'POST', url: `/approve/${id}/submit`, payload: { actionId: id, approver, quizAnswer, timeSpentMs, scrolledToBottom: true, timestamp: new Date().toISOString() } }).then(r => r.json());
+  app.inject({ method: 'POST', url: `/approve/${id}/submit`, payload: { actionId: id, approver, quizAnswer, timeSpentMs, scrolledToBottom: true, viewStamp: issueViewStamp(id, Date.now() - timeSpentMs) } }).then(r => r.json());
 
 let passed = 0;
 async function step(name: string, fn: () => Promise<void>) { await fn(); passed++; console.log(`  ✓ ${name}`); }
@@ -90,10 +99,69 @@ try {
     delete process.env.LITTI_API_KEY;
   });
 
+  await step('quiz: 4 distinct options, one correct, for every sample diff', async () => {
+    const samples = [['css-fix.diff', 'edit'], ['migration.diff', 'migrate'], ['destructive.diff', 'deploy']] as const;
+    for (const [f, a] of samples) {
+      for (let i = 0; i < 25; i++) {
+        const q = generateQuiz(card(f, a, ['x']));
+        assert.equal(q.options.length, 4, f);
+        assert.equal(new Set(q.options).size, 4, `${f}: duplicate options ${q.options}`);
+        assert.ok(q.correctIndex >= 0 && q.correctIndex < 4);
+      }
+    }
+    const cssQ = generateQuiz(card('css-fix.diff', 'edit', ['x']));
+    assert.equal(cssQ.options[cssQ.correctIndex], '8px');
+    const migQ = generateQuiz(card('migration.diff', 'migrate', ['x']));
+    assert.equal(migQ.options[migQ.correctIndex], 'users');
+    const fn = buildActionCard({ action: 'edit', description: 'fn', diff: '+export function chargeCard() {}', touchedPaths: ['a.ts'], reversible: true, rollbackPlan: '' });
+    const fnQ = generateQuiz(fn);
+    assert.equal(fnQ.options[fnQ.correctIndex], 'chargeCard');
+  });
+
+  await step('separation of duties: no double-approval, no self-approval', async () => {
+    const c = card('migration.diff', 'migrate', ['migrations/y.sql']);
+    registerPending(c, 'http://t');
+    const a = getPending(c.id)!.quizAnswer;
+    assert.equal((await submit(c.id, 'priya', a, 40000)).ok, true);
+    assert.match((await submit(c.id, 'Priya', a, 40000)).message, /already countersigned/);
+    assert.match((await submit(c.id, 'builder-agent', a, 40000)).message, /requester/);
+    assert.equal(getPending(c.id)!.status, 'pending');
+  });
+
+  await step('room gets approval cards, warnings and results', async () => {
+    assert.ok(room.some(m => m.startsWith('CARD 2 ')));
+    assert.ok(room.some(m => m.includes('Deploy executed') && m.includes('Reviewed by')));
+    assert.ok(room.some(m => m.includes('@sam') && m.includes('tier is bumped')));
+    assert.ok(room.some(m => m.includes('countersigned')));
+  });
+
+  await step('@litti chat commands', async () => {
+    const h = createCommandHandler('http://t');
+    const ev = (body: string) => h({ roomId: 'r', sender: '@u', senderName: 'dev', body });
+    assert.match((await ev('@litti help'))!, /propose/);
+    assert.match((await ev('@litti pending'))!, /Waiting/);
+    assert.match((await ev('@litti approve abc'))!, /doesn't take approvals in chat/);
+    assert.match((await ev('@litti stats'))!, /priya/);
+    const before = room.length;
+    const fence = '`'.repeat(3);
+    const r = await ev(`@litti propose\n${fence}json\n{"action":"edit","description":"chat proposal","diff":"+a","touchedPaths":["src/a.ts"]}\n${fence}`);
+    assert.equal(r, null);
+    const posted = room.slice(before).find(m => m.startsWith('CARD 1 '));
+    assert.ok(posted, 'proposal card posted to room');
+    const id = posted!.split('/approve/')[1];
+    assert.match((await ev(`@litti status ${id}`))!, /PENDING/);
+    assert.match((await ev('@litti propose not json'))!, /JSON/);
+  });
+
+  await step('@litti verify reports a broken chain', async () => {
+    const h = createCommandHandler('http://t');
+    assert.match((await h({ roomId: 'r', sender: '@u', senderName: 'dev', body: '@litti verify' }))!, /Chain broken/);
+  });
+
   console.log(`\n✅ ${passed} checks passed`);
 } catch (err) {
   console.error(`\n❌ failed after ${passed} checks:`, err);
   process.exitCode = 1;
 } finally {
-  for (const f of readdirSync('.')) if (/^deployed-\d+\.txt$/.test(f)) rmSync(f);
+  rmSync(DEPLOY_DIR, { recursive: true, force: true });
 }

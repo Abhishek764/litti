@@ -1,0 +1,10 @@
+node_modules
+data
+deployments
+*.db
+*.db-*
+.env
+.litti-switch.json
+.git
+.github
+test

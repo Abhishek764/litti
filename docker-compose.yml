@@ -1,0 +1,16 @@
+services:
+  litti:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Reach Switch running on the host machine (Switch Console local server).
+      SWITCH_API_URL: ${SWITCH_API_URL:-http://host.docker.internal:64300}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "3847:3847"
+    volumes:
+      - litti-data:/data
+volumes:
+  litti-data:

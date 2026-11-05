@@ -1,55 +1,76 @@
-# Litti — Demo Scenarios
+# Litti — demo scenarios (about 4 minutes)
 
-Start with `npm run demo`. It opens the first approval page and the dashboard.
-Three pending actions are created (Tier 1, Tier 2, Tier 3).
+**Setup:** Switch Console running, a chat app (Discord or Slack) connected to a room, and
+`litti` added to that room. Then:
 
----
+```bash
+npm run demo
+```
 
-## Scenario 1 — Happy path (Tier 1 CSS fix)
+The terminal shows three proposed actions. Their approval cards appear **in the Switch room**,
+and the review page and dashboard open in your browser.
 
-1. Open the **css-fix** approval link (Tier 1 · LOW).
-2. The diff is short. Read it.
-3. Quiz: "What function/symbol is being modified?" — pick the value pulled from the diff.
-4. Tick **I have reviewed this change**.
-5. Wait past the 10s minimum, then **Countersign**.
-6. Result: `✅ Deploy executed`. A `deployed-*.txt` file is written.
-7. Refresh the dashboard — a green, high-attention receipt appears. Chain grows by one.
-
-**Point:** one human, real comprehension, clean approval.
+> No Switch? `npm run demo:offline` runs the same flow, printing room messages in the terminal.
 
 ---
 
-## Scenario 2 — Rubber-stamp caught (Tier 2 migration)
+## Scenario 0: An agent asks permission in the room (30s)
 
-1. Open the **migration** approval link (Tier 2 · HIGH), e.g. as `Sam`:
-   `/approve/<id>?approver=Sam`
-2. As Sam, try to approve instantly — pick a wrong quiz answer or submit in under 10s.
-3. Result: `⚠️ Rubber-stamp blocked`. A **rubber-stamped** receipt is logged,
-   a warning is posted to the Switch room, and the **next** action's tier is bumped +1.
-4. Now approve properly as `Priya` and `Sam` (Tier 2 needs 2 approvers):
-   read the diff, answer "Which table is being modified?" = `users`, dwell > 30s, Countersign.
-5. When the 2nd approver passes, the token is issued, the diff hash is validated,
-   and the deploy runs.
+In the room, paste what a coding agent would send:
 
-**Point:** fast clicks don't count. Two independent humans, both comprehending.
+````
+@litti propose
+```json
+{"action":"migrate","description":"Drop the legacy_tokens table","diff":"+DROP TABLE legacy_tokens;","touchedPaths":["migrations/009_drop_legacy.sql"],"reversible":false}
+```
+````
 
----
+Litti answers in the room: **🔴 Tier 3 · 3 reviewers**, with the reasons (destructive, irreversible)
+and a review link. Then try `@litti approve`. Litti refuses, because approval never happens in chat.
 
-## Scenario 3 — Tamper detected
-
-1. After at least one approved receipt exists, go to the dashboard.
-2. Click **Verify Chain** → every link animates to ✅, "Chain intact".
-3. Click **Break Chain (Demo)** → one receipt's hash is corrupted.
-4. Click **Verify Chain** again → links tick ✅ until the broken one flashes red ❌,
-   "Chain broken". Verification stops exactly where tampering occurred.
-
-**Point:** the receipt log is tamper-evident. Change one byte, the chain tells on you.
+**Point:** the agent can't act on its own say-so, and nobody can approve with a chat reply.
 
 ---
 
-## Token-binding proof (optional talking point)
+## Scenario 1: Happy path (Tier 1 CSS fix, 30s)
 
-The deploy only runs with a signed token whose `diffHash` equals the SHA-256 of the
-*current* diff. If the builder agent changes a single byte after approval, the token
-is dead and the executor refuses: `🔒 Deploy blocked — Diff changed since approval`.
-Tokens are also single-use — a replayed token is rejected.
+1. In the room: `@litti review <css-fix id>` returns **your** signed review link (or open the link from the terminal).
+2. Read the 8-line diff. Quiz: "What does `border-radius` change to?" The answer is `8px`.
+3. Tick **I have reviewed this change**, wait past 10s (the server times you), then **Countersign**.
+4. The room shows `✅ Deploy executed — reviewed by you · attention 9x/100 · receipt chained.`
+
+**Point:** one human, real comprehension, a clean approval, announced in the room.
+
+---
+
+## Scenario 2: Rubber-stamp caught (Tier 2 migration, 90s)
+
+1. Open the **migration** link and type `sam` as the name (demo mode). Click a wrong answer and Countersign within 3 seconds.
+2. Blocked. The room gets
+   `⚠️ @sam Comprehension quiz failed. Blocked. All reviews reset, and the next action's tier is bumped +1.`
+3. Now do it properly as `priya`: read it, answer `users`, wait 30s, Countersign. The room shows `✍️ priya countersigned (1/2)`.
+4. Then as `sam` again, properly. The room shows `✅ Deploy executed`, reviewed by priya and sam.
+5. Try countersigning as `priya` twice: `already countersigned`. Two different people are required.
+6. In the room: `@litti stats` shows sam's low attention score and 1 rubber-stamp.
+
+**Point:** fast clicks don't count, one person can't count twice, and the team sees all of it in chat.
+
+---
+
+## Scenario 3: Tamper detected (30s)
+
+1. On the dashboard, click **Verify Chain**. Every link animates to ✅.
+2. Click **Break Chain (Demo)**. One stored receipt is silently edited.
+3. Click **Verify Chain** again. The chain turns red ❌ exactly at the edited receipt.
+4. In the room, `@litti verify` says `❌ Chain broken at receipt #N`.
+
+**Point:** the decision log is tamper-evident. Edit one byte of history and Litti tells the room.
+
+---
+
+## Talking points
+
+- **Switch is the workflow.** Requests, review links, progress, warnings and results all live in the room where the team already talks.
+- **Server-measured review time.** The page carries a signed "opened at" stamp, so editing the timer in devtools does nothing.
+- **Diff-bound tokens.** The approval is an HMAC token tied to the SHA-256 of the exact diff. Change one byte after approval and `/api/tokens/verify` says `Diff changed since approval — token is dead`. Tokens are single-use.
+- **Production-ready:** signed per-user review links or SSO-header identity, a signed deploy webhook for CI/CD, Docker image, config validation, health check, 27 automated checks.

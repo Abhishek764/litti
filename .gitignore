@@ -6,3 +6,6 @@ dist/
 *.db-wal
 deployed-*.txt
 .DS_Store
+.litti-switch.json
+data/
+deployments/

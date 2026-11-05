@@ -79,6 +79,8 @@ long-polls `GET /agents/{id}/notifications` for messages addressed to it, and po
 
 **Requirements:** Node.js 20.10+, [Switch Console](https://docs.switchagents.ai/switch-rooms/getting-started) with a local server, and a chat app connected to a room.
 
+> **First time with Switch?** Follow the step-by-step guide: [docs/switch-setup.md](docs/switch-setup.md). It covers the Discord bot, the room, registering `@litti`, adding your coding agent, and six real-world scenarios.
+
 ```bash
 git clone https://github.com/Abhishek764/litti.git
 cd litti

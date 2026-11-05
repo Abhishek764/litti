@@ -32,7 +32,6 @@ one to review, and nothing runs (`npm start` refuses to start without Switch).
   <img alt="Litti architecture: a coding agent asks @litti in a Switch room; reviewers get a link from Discord, review on Litti's Fastify page; the gatekeeper tiers the action, the executor only deploys with a signed token, and every decision lands in a SQLite receipt chain" src="docs/images/architecture.png">
 </picture>
 
-<sub>Source: [docs/architecture.html](docs/architecture.html) (self-contained, open it in a browser).</sub>
 
 | In the Switch room | What happens |
 |---|---|

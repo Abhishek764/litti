@@ -1,0 +1,17 @@
+--- /dev/null
++++ b/migrations/20261105_add_mfa_to_users.sql
+@@ -0,0 +1,14 @@
++-- Migration: Add MFA columns to users table
++-- Author: builder-agent
++-- Date: 2026-11-05
++
++ALTER TABLE users
++  ADD COLUMN mfa_enabled BOOLEAN NOT NULL DEFAULT FALSE,
++  ADD COLUMN mfa_secret VARCHAR(255),
++  ADD COLUMN mfa_backup_codes TEXT,
++  ADD COLUMN mfa_last_verified TIMESTAMP;
++
++CREATE INDEX idx_users_mfa_enabled ON users(mfa_enabled);
++
++-- Backfill: all existing users get mfa_enabled = false (already default)
++-- Rollback: see rollbackPlan on the ActionCard (removes the four mfa_* columns)

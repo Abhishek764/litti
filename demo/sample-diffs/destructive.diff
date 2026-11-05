@@ -1,0 +1,11 @@
+--- a/scripts/cleanup.sh
++++ b/scripts/cleanup.sh
+@@ -1,5 +1,8 @@
+ #!/bin/bash
+-echo "Cleaning temp files..."
+-rm -f /tmp/app-cache-*
++echo "Purging all user session data..."
++DELETE FROM sessions WHERE created_at < NOW() - INTERVAL '30 days';
++DROP TABLE IF EXISTS legacy_user_tokens;
++rm -rf /var/data/user-uploads/archived/
++echo "Purge complete."

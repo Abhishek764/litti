@@ -1,0 +1,47 @@
+{
+  "name": "litti",
+  "version": "1.0.0",
+  "description": "A lie detector for the Approve button. Proves humans read what they approved before AI agents act.",
+  "type": "module",
+  "scripts": {
+    "demo": "tsx src/demo.ts",
+    "start": "tsx src/index.ts",
+    "build": "tsc",
+    "test": "tsc --noEmit && tsx test/smoke.ts"
+  },
+  "dependencies": {
+    "@fastify/formbody": "^8.0.1",
+    "@fastify/static": "^8.0.3",
+    "better-sqlite3": "^11.5.0",
+    "dotenv": "^16.4.5",
+    "fastify": "^5.1.0",
+    "open": "^10.1.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/node": "^22.9.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Abhishek764/litti.git"
+  },
+  "homepage": "https://github.com/Abhishek764/litti#readme",
+  "bugs": {
+    "url": "https://github.com/Abhishek764/litti/issues"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "ai-agents",
+    "human-in-the-loop",
+    "approval",
+    "audit-log",
+    "hash-chain",
+    "security",
+    "code-review"
+  ]
+}

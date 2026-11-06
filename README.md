@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🔒 LITTI
+# 🔒 litti
 
 [![CI](https://github.com/Abhishek764/litti/actions/workflows/ci.yml/badge.svg)](https://github.com/Abhishek764/litti/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)

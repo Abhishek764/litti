@@ -9,16 +9,16 @@ process.env.SECRET_KEY = 'prod-test-secret-'.repeat(4);
 delete process.env.LITTI_ALLOW_SELF_ASSERTED;
 process.env.LITTI_DEPLOY_DIR = join(tmpdir(), `litti-prod-deploy-${process.pid}`);
 import { initDb, getPending, getSetting } from '../src/chain/db.js';
-import { buildServer, setSwitchClient } from '../src/approval/server.js';
+import { buildServer, setNotifier } from '../src/approval/server.js';
 import { issueTicket, issueViewStamp } from '../src/approval/identity.js';
-import { createCommandHandler } from '../src/switch/commands.js';
 import { checkProductionConfig } from '../src/config.js';
 
 initDb(':memory:');
 const room: string[] = [];
-setSwitchClient({ postCard: (c) => { room.push(`CARD ${c.id}`); }, postMessage: (m) => { room.push(m); } });
+setNotifier({ postCard: (c) => { room.push(`CARD ${c.id}`); }, postMessage: (m) => { room.push(m); } });
 const app = buildServer();
-const chat = createCommandHandler('http://litti.test');
+const reviewLink = (id: string, reviewer: string) =>
+  app.inject({ method: 'POST', url: `/api/actions/${id}/review-link`, payload: { reviewer } });
 
 const DIFF = '--- a/src/pay.ts\n+++ b/src/pay.ts\n@@ -1 +1 @@\n-export function chargeCard(a) { return a; }\n+export function chargeCard(a) { return a * 100; }';
 const propose = async (headers: Record<string, string> = {}) => (await app.inject({
@@ -58,13 +58,13 @@ try {
     const { id } = await propose();
     const r = await submit(id, { approver: 'mallory', quizAnswer: answer(id), viewStamp: stamp(id, 20000) });
     assert.equal(r.statusCode, 401);
-    assert.match(r.json().message, /@litti review/);
+    assert.match(r.json().message, /litti review/);
   });
 
-  await step('@litti review issues a signed link that locks the reviewer name', async () => {
+  await step('review-link API issues a signed link that locks the reviewer name', async () => {
     const { id } = await propose();
-    const reply = (await chat({ roomId: 'r', sender: '@switch-user-1:s', senderName: 'priya', body: `@litti review ${id}` }))!;
-    const t = decodeURIComponent(reply.match(/\?t=(\S+)/)![1]);
+    const url: string = (await reviewLink(id, 'priya')).json().url;
+    const t = decodeURIComponent(url.match(/\?t=(\S+)/)![1]);
     const page = (await app.inject({ url: `/approve/${id}?t=${encodeURIComponent(t)}` })).body;
     assert.match(page, /value="priya" readonly/);
     // Typed name is ignored; identity comes from the ticket.
@@ -75,7 +75,28 @@ try {
 
   await step('requester cannot get a review link for their own action', async () => {
     const { id } = await propose();
-    assert.match((await chat({ roomId: 'r', sender: '@a', senderName: 'coder-bot', body: `@litti review ${id}` }))!, /someone else/);
+    const r = await reviewLink(id, 'coder-bot');
+    assert.equal(r.statusCode, 403);
+    assert.match(r.json().message, /requester/);
+  });
+
+  await step('agents cannot mint review links once LITTI_ADMIN_KEY is set; inbox needs SSO', async () => {
+    const { id } = await propose();
+    process.env.LITTI_API_KEY = 'agent-key';
+    process.env.LITTI_ADMIN_KEY = 'admin-key';
+    try {
+      const asAgent = await app.inject({ method: 'POST', url: `/api/actions/${id}/review-link`, headers: { 'x-litti-key': 'agent-key' }, payload: { reviewer: 'alice' } });
+      assert.equal(asAgent.statusCode, 401);
+      const asAdmin = await app.inject({ method: 'POST', url: `/api/actions/${id}/review-link`, headers: { 'x-litti-admin-key': 'admin-key' }, payload: { reviewer: 'alice' } });
+      assert.equal(asAdmin.statusCode, 200);
+      assert.equal((await app.inject({ url: '/' })).statusCode, 401);
+      process.env.LITTI_IDENTITY_HEADER = 'x-forwarded-email';
+      assert.equal((await app.inject({ url: '/', headers: { 'x-forwarded-email': 'lee@acme.com' } })).statusCode, 200);
+    } finally {
+      delete process.env.LITTI_API_KEY;
+      delete process.env.LITTI_ADMIN_KEY;
+      delete process.env.LITTI_IDENTITY_HEADER;
+    }
   });
 
   await step('tickets are bound to one action and expire', async () => {

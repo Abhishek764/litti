@@ -1,10 +1,9 @@
-/** Production entry point. Validates config, joins Switch as @litti, serves review pages. */
+/** Production entry point. Validates config, serves review pages, inbox, dashboard and the agent API. */
 process.on('unhandledRejection', err => console.error('⚠️  Unhandled error (still running):', err));
 import 'dotenv/config';
 import { initDb, closeDb } from './chain/db.js';
-import { buildServer, setSwitchClient } from './approval/server.js';
-import { connectSwitch } from './switch/client.js';
-import { createCommandHandler } from './switch/commands.js';
+import { buildServer, setNotifier } from './approval/server.js';
+import { notifierFromEnv } from './notify/index.js';
 import { checkProductionConfig } from './config.js';
 
 const PORT = Number(process.env.APPROVAL_SERVER_PORT) || 3847;
@@ -21,25 +20,21 @@ async function main() {
   }
   console.log('🔒 Litti starting...');
 
-  // Switch is where requests, reviews and results happen. No Switch, no Litti.
-  const sw = await connectSwitch();
   initDb(DB_PATH);
-  setSwitchClient(sw);
+  setNotifier(notifierFromEnv());
 
   const app = buildServer({ logger: true });
   await app.listen({ port: PORT, host: HOST });
-  console.log(`🔑 Review pages on ${BASE}`);
-  console.log(`📊 Dashboard: ${BASE}/dashboard.html`);
-  console.log(`💬 In your Switch room, try: @${process.env.SWITCH_AGENT_NAME || 'litti'} help`);
-
-  void sw.listen(createCommandHandler(BASE));
+  console.log(`📥 Review inbox: ${BASE}/`);
+  console.log(`📊 Dashboard:    ${BASE}/dashboard.html`);
+  console.log(`🤖 Agent API:    POST ${BASE}/api/actions`);
+  if (!process.env.LITTI_NOTIFY_WEBHOOK) console.log('💬 Tip: set LITTI_NOTIFY_WEBHOOK to post approval cards to Slack or Discord.');
 
   let stopping = false;
   const shutdown = async (signal: string) => {
     if (stopping) return;
     stopping = true;
     console.log(`\n${signal} received — shutting down.`);
-    sw.stop();
     await app.close().catch(() => {});
     closeDb();
     process.exit(0);

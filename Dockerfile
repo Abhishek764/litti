@@ -12,13 +12,12 @@ COPY public ./public
 COPY demo ./demo
 COPY tsconfig.json ./
 
-# Persistent state: receipt chain, deploy records, Switch agent credentials.
+# Persistent state: receipt chain and deploy records.
 RUN mkdir -p /data && chown node:node /data
 ENV HOST=0.0.0.0 \
     APPROVAL_SERVER_PORT=3847 \
     LITTI_DB_PATH=/data/litti.db \
-    LITTI_DEPLOY_DIR=/data/deployments \
-    SWITCH_CREDS_FILE=/data/litti-switch.json
+    LITTI_DEPLOY_DIR=/data/deployments
 VOLUME ["/data"]
 EXPOSE 3847
 

@@ -8,17 +8,16 @@ process.env.LITTI_ALLOW_SELF_ASSERTED = 'true';
 const DEPLOY_DIR = mkdtempSync(join(tmpdir(), 'litti-deploy-'));
 process.env.LITTI_DEPLOY_DIR = DEPLOY_DIR;
 import { initDb, enableDemoTamper, getPending } from '../src/chain/db.js';
-import { buildServer, setSwitchClient, registerPending } from '../src/approval/server.js';
+import { buildServer, setNotifier, registerPending } from '../src/approval/server.js';
 import { buildActionCard } from '../src/agents/builder.js';
 import { generateQuiz } from '../src/agents/gatekeeper.js';
-import { createCommandHandler } from '../src/switch/commands.js';
 import { issueViewStamp } from '../src/approval/identity.js';
 import type { ActionKind } from '../src/types.js';
 
 initDb(':memory:');
 enableDemoTamper();
 const room: string[] = [];
-setSwitchClient({ postCard: (_c, a, url) => { room.push(`CARD ${a.tier} ${url}`); }, postMessage: (m) => { room.push(m); } });
+setNotifier({ postCard: (_c, a, url) => { room.push(`CARD ${a.tier} ${url}`); }, postMessage: (m) => { room.push(m); } });
 const app = buildServer();
 
 const card = (file: string, action: ActionKind, paths: string[], reversible = true) =>
@@ -128,34 +127,45 @@ try {
     assert.equal(getPending(c.id)!.status, 'pending');
   });
 
-  await step('room gets approval cards, warnings and results', async () => {
+  await step('notifier gets approval cards, warnings and results', async () => {
     assert.ok(room.some(m => m.startsWith('CARD 2 ')));
     assert.ok(room.some(m => m.includes('Deploy executed') && m.includes('Reviewed by')));
     assert.ok(room.some(m => m.includes('@sam') && m.includes('tier is bumped')));
     assert.ok(room.some(m => m.includes('countersigned')));
   });
 
-  await step('@litti chat commands', async () => {
-    const h = createCommandHandler('http://t');
-    const ev = (body: string) => h({ roomId: 'r', sender: '@u', senderName: 'dev', body });
-    assert.match((await ev('@litti help'))!, /propose/);
-    assert.match((await ev('@litti pending'))!, /Waiting/);
-    assert.match((await ev('@litti approve abc'))!, /doesn't take approvals in chat/);
-    assert.match((await ev('@litti stats'))!, /priya/);
+  await step('agent API: propose, pending list, review link, status, inbox', async () => {
     const before = room.length;
-    const fence = '`'.repeat(3);
-    const r = await ev(`@litti propose\n${fence}json\n{"action":"edit","description":"chat proposal","diff":"+a","touchedPaths":["src/a.ts"]}\n${fence}`);
-    assert.equal(r, null);
-    const posted = room.slice(before).find(m => m.startsWith('CARD 1 '));
-    assert.ok(posted, 'proposal card posted to room');
-    const id = posted!.split('/approve/')[1];
-    assert.match((await ev(`@litti status ${id}`))!, /PENDING/);
-    assert.match((await ev('@litti propose not json'))!, /JSON/);
+    const res = await app.inject({ method: 'POST', url: '/api/actions', payload: { action: 'edit', agent: 'dev', description: 'api proposal', diff: '+a', touchedPaths: ['src/a.ts'] } });
+    assert.equal(res.statusCode, 200);
+    const { id, status, approvalUrl } = res.json();
+    assert.equal(status, 'pending');
+    assert.ok(approvalUrl.endsWith(`/approve/${id}`));
+    assert.ok(room.slice(before).some(m => m.startsWith('CARD 1 ')), 'approval card notified');
+
+    const pending = (await app.inject({ method: 'GET', url: '/api/pending' })).json().pending;
+    const mine = pending.find((p: any) => p.id === id);
+    assert.ok(mine && mine.description === 'api proposal' && !('quizAnswer' in mine) && !('quiz' in mine));
+
+    const link = await app.inject({ method: 'POST', url: `/api/actions/${id}/review-link`, payload: { reviewer: 'priya' } });
+    assert.equal(link.statusCode, 200);
+    assert.match(link.json().url, new RegExp(`/approve/${id}\\?t=`));
+    assert.equal((await app.inject({ method: 'POST', url: `/api/actions/${id}/review-link`, payload: { reviewer: 'dev' } })).statusCode, 403);
+    assert.equal((await app.inject({ method: 'POST', url: `/api/actions/${id}/review-link`, payload: {} })).statusCode, 400);
+    assert.equal((await app.inject({ method: 'POST', url: '/api/actions/nope/review-link', payload: { reviewer: 'x' } })).statusCode, 404);
+
+    assert.equal((await app.inject({ method: 'GET', url: `/api/actions/${id}` })).json().status, 'pending');
+    const inbox = await app.inject({ method: 'GET', url: '/' });
+    assert.equal(inbox.statusCode, 200);
+    assert.match(inbox.body, /api proposal/);
+    assert.equal((await app.inject({ method: 'POST', url: '/api/actions', payload: { action: 'nope' } })).statusCode, 400);
   });
 
-  await step('@litti verify reports a broken chain', async () => {
-    const h = createCommandHandler('http://t');
-    assert.match((await h({ roomId: 'r', sender: '@u', senderName: 'dev', body: '@litti verify' }))!, /Chain broken/);
+  await step('chain verify API reports a broken chain', async () => {
+    const links = (await app.inject({ method: 'GET', url: '/api/chain/verify' })).json();
+    assert.ok(links.some((l: any) => !l.valid));
+    const stats = (await app.inject({ method: 'GET', url: '/api/stats' })).json();
+    assert.ok(stats.some((s: any) => s.approver === 'priya'));
   });
 
   console.log(`\n✅ ${passed} checks passed`);

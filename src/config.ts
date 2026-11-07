@@ -22,6 +22,7 @@ export function checkProductionConfig(env = process.env): StartupCheck {
   if (env.PUBLIC_URL && !/^https?:\/\//.test(env.PUBLIC_URL)) errors.push('PUBLIC_URL must start with http:// or https://');
 
   if (!env.LITTI_API_KEY) warnings.push('LITTI_API_KEY is not set — anyone who can reach the server can submit actions.');
+  else if (!env.LITTI_ADMIN_KEY) warnings.push('LITTI_ADMIN_KEY is not set — anyone with LITTI_API_KEY (including agents) can issue review links. Set a separate admin key.');
   if (env.LITTI_ALLOW_SELF_ASSERTED === 'true') warnings.push('LITTI_ALLOW_SELF_ASSERTED=true — reviewers can type any name. Use review links or LITTI_IDENTITY_HEADER in production.');
   if (env.LITTI_IDENTITY_HEADER && (env.HOST === '0.0.0.0' || env.HOST === '::')) {
     warnings.push(`LITTI_IDENTITY_HEADER is trusted — make sure only your auth proxy can reach port ${port}.`);

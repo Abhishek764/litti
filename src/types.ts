@@ -102,8 +102,8 @@ export interface PendingAction {
   createdAt: string;
 }
 
-/** Abstraction over the Switch room. Stubbed for standalone demo. */
-export interface SwitchClient {
+/** Where Litti tells the team about approvals (console, webhook, ...). Best-effort. */
+export interface Notifier {
   postCard(card: ActionCard, assessment: RiskAssessment, approvalUrl: string): Promise<void> | void;
   postMessage(message: string): Promise<void> | void;
 }

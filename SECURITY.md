@@ -30,12 +30,14 @@ We aim to acknowledge within 72 hours.
 | Guessing the quiz | Answer checked server-side; a wrong answer is a rubber-stamp: blocked, announced, reviews reset, next tier +1 |
 | Editing the decision log | Hash-chained receipts; any edit breaks verification |
 
-**Known limits.** A review link posted in a shared room can be used by anyone who opens it before
+**Known limits.** A review link shared in a team channel can be used by anyone who opens it before
 it expires, so use `LITTI_IDENTITY_HEADER` behind your SSO proxy for strict identity. Litti
 proves a reviewer *engaged* with a diff (time, scroll, comprehension). It does not prove the
 change is correct.
 
 ## Deployment checklist
+
+- Give agents `LITTI_API_KEY` only. Keep `LITTI_ADMIN_KEY` (issues review links) with the people who assign reviewers. Without an admin key, anyone holding the API key can issue review links under any name.
 
 - `SECRET_KEY`: 32+ random characters, never committed. `npm start` refuses weak keys.
 - `LITTI_API_KEY`: set it, so only your agents and pipelines can call the HTTP API.
@@ -43,5 +45,5 @@ change is correct.
 - Identity: put Litti behind your SSO proxy and set `LITTI_IDENTITY_HEADER`. Make sure only the proxy can reach the port.
 - Serve `PUBLIC_URL` over **https** (review links carry signed tickets; pages send `Referrer-Policy: no-referrer`).
 - `LITTI_WEBHOOK_SECRET`: set a separate key for your deploy webhook and verify `x-litti-signature`.
-- Back up the `/data` volume (receipt chain + Switch agent credentials in `litti-switch.json`).
+- Back up the `/data` volume (receipt chain and deploy records).
 - The "Break Chain" endpoint only works under `npm run demo`; production never enables it.

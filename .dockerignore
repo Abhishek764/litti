@@ -4,7 +4,6 @@ deployments
 *.db
 *.db-*
 .env
-.litti-switch.json
 .git
 .github
 test

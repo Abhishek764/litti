@@ -4,34 +4,56 @@ import fastifyStatic from '@fastify/static';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { createHash, timingSafeEqual } from 'node:crypto';
-import type { ActionCard, ApprovalSubmission, ApprovalToken, QuizResult, SwitchClient, Tier } from '../types.js';
+import type { ActionCard, ApprovalSubmission, ApprovalToken, Notifier, PendingAction, QuizResult, Tier } from '../types.js';
 import { buildActionCard } from '../agents/builder.js';
 import { gatekeep } from '../agents/gatekeeper.js';
 import { assessRisk } from '../rules/tiering.js';
 import { detectRubberStamp } from '../rules/rubberstamp.js';
 import { renderApprovalPage } from './page.js';
 import { createToken, validateToken } from './token.js';
-import { allowSelfAsserted, elapsedSinceView, issueViewStamp, resolveReviewer, verifyTicket } from './identity.js';
+import { allowSelfAsserted, elapsedSinceView, issueTicket, issueViewStamp, resolveReviewer, verifyTicket } from './identity.js';
+import { renderInbox } from './inbox.js';
 import { execute } from '../deploy/executor.js';
 import { appendReceipt, attentionScore } from '../chain/receipt.js';
 import { verifyChain } from '../chain/verify.js';
 import {
   insertPending, getPending, updatePending, allReceipts, corruptReceipt,
-  getSetting, setSetting, setApprovalToken, getApprovalToken,
+  getSetting, setSetting, setApprovalToken, getApprovalToken, listPending,
 } from '../chain/db.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ACTIONS = ['read', 'lint', 'format', 'test', 'edit', 'migrate', 'deploy', 'delete'];
 const MAX_DIFF_BYTES = 512 * 1024;
 
-let switchClient: SwitchClient | null = null;
+let notifier: Notifier | null = null;
 
-/** Inject the Switch client (live or offline stub). */
-export function setSwitchClient(c: SwitchClient | null): void { switchClient = c; }
+/** Set where approval cards and updates are sent (console, webhook, ...). */
+export function setNotifier(n: Notifier | null): void { notifier = n; }
 
-/** Post to the room without ever failing the request. */
+/** Notify the team without ever failing the request. */
 function announce(message: string): void {
-  try { void Promise.resolve(switchClient?.postMessage(message)).catch(() => {}); } catch { /* room is best-effort */ }
+  try { void Promise.resolve(notifier?.postMessage(message)).catch(() => {}); } catch { /* best-effort */ }
+}
+
+/** Public base URL for links. Falls back to the request's host. */
+function baseUrlFor(req: { protocol: string; headers: Record<string, unknown> }): string {
+  return process.env.PUBLIC_URL || `${req.protocol}://${String(req.headers.host)}`;
+}
+
+/** Summary of a pending action, safe to show to agents and reviewers (no quiz answer). */
+function summary(p: PendingAction, baseUrl: string) {
+  return {
+    id: p.id,
+    action: p.actionCard.action,
+    agent: p.actionCard.agent,
+    description: p.actionCard.description,
+    tier: p.tier,
+    status: p.status,
+    approvals: p.currentApprovals.length,
+    requiredApprovers: p.requiredApprovers,
+    createdAt: p.createdAt,
+    approvalUrl: `${baseUrl}/approve/${p.id}`,
+  };
 }
 
 /** Rubber-stamp penalty for the NEXT action, persisted across restarts. */
@@ -62,7 +84,7 @@ export function registerPending(card: ActionCard, baseUrl: string): { id: string
   });
   const url = `${baseUrl}/approve/${card.id}`;
   if (tier > 0) {
-    try { void Promise.resolve(switchClient?.postCard(card, { tier, reasons, requiredApprovers }, url)).catch(() => {}); } catch { /* best-effort */ }
+    try { void Promise.resolve(notifier?.postCard(card, { tier, reasons, requiredApprovers }, url)).catch(() => {}); } catch { /* best-effort */ }
   }
   return { id: card.id, url, tier };
 }
@@ -70,12 +92,35 @@ export function registerPending(card: ActionCard, baseUrl: string): { id: string
 /** Minimum review time for a tier. */
 export function minTimeMs(tier: Tier): number { return tier >= 2 ? 30000 : 10000; }
 
-function apiKeyOk(given: unknown): boolean {
-  const key = process.env.LITTI_API_KEY;
-  if (!key) return true;
+function keyMatches(given: unknown, key: string): boolean {
   const g = Buffer.from(String(given ?? ''));
   const k = Buffer.from(key);
   return g.length === k.length && timingSafeEqual(g, k);
+}
+
+function apiKeyOk(given: unknown): boolean {
+  const key = process.env.LITTI_API_KEY;
+  return !key || keyMatches(given, key);
+}
+
+/**
+ * Issuing review links is an admin power: whoever holds it can name reviewers.
+ * With LITTI_ADMIN_KEY set, agents holding only LITTI_API_KEY can't do it.
+ */
+function adminKeyOk(headers: Record<string, unknown>): boolean {
+  const admin = process.env.LITTI_ADMIN_KEY;
+  if (admin) return keyMatches(headers['x-litti-admin-key'], admin);
+  return apiKeyOk(headers['x-litti-key']);
+}
+
+/** Same person, however they type their name. */
+const normName = (s: string) => s.normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase();
+
+/** The inbox lists every pending action. Open locally; behind SSO in production. */
+function inboxAllowed(headers: Record<string, unknown>): boolean {
+  if (!process.env.LITTI_API_KEY) return true;
+  const h = process.env.LITTI_IDENTITY_HEADER?.toLowerCase();
+  return Boolean(h && headers[h]);
 }
 
 /** Build the Fastify app with all routes. */
@@ -97,7 +142,16 @@ export function buildServer(opts: { logger?: boolean } = {}): FastifyInstance {
 
   app.register(fastifyStatic, { root: join(__dirname, '..', '..', 'public'), prefix: '/' });
 
-  app.get('/healthz', () => ({ ok: true, switch: switchClient && 'agentId' in switchClient ? 'connected' : 'offline', receipts: allReceipts().length }));
+  app.get('/healthz', () => ({ ok: true, receipts: allReceipts().length }));
+
+  // Review inbox: what's waiting for reviewers.
+  app.get('/', (req, reply) => {
+    if (!inboxAllowed(req.headers)) {
+      reply.code(401).type('text/html').send('<!doctype html><meta charset="utf-8"><title>Litti</title><body style="font-family:system-ui;padding:40px"><h1>🔒 Inbox needs sign-in</h1><p>Put Litti behind your SSO proxy and set <code>LITTI_IDENTITY_HEADER</code>, or list actions with <code>litti pending</code>.</p></body>');
+      return;
+    }
+    reply.type('text/html').header('cache-control', 'no-store').send(renderInbox(listPending(), baseUrlFor(req)));
+  });
 
   // Review page.
   app.get<{ Params: { id: string }; Querystring: { t?: string } }>('/approve/:id', (req, reply) => {
@@ -210,8 +264,7 @@ export function buildServer(opts: { logger?: boolean } = {}): FastifyInstance {
       reversible: b.reversible ?? true,
       rollbackPlan: String(b.rollbackPlan ?? '').slice(0, 2000),
     });
-    const baseUrl = process.env.PUBLIC_URL || `${req.protocol}://${req.headers.host}`;
-    const { id, url, tier } = registerPending(card, baseUrl);
+    const { id, url, tier } = registerPending(card, baseUrlFor(req));
 
     // Tier 0 (read-only) is auto-approved: logged and chained, no reviewers.
     if (tier === 0) {
@@ -231,6 +284,30 @@ export function buildServer(opts: { logger?: boolean } = {}): FastifyInstance {
     if (!p) return reply.code(404).send({ ok: false, message: 'Unknown action.' });
     const token = p.status === 'approved' ? getApprovalToken(p.id) : null;
     return { ok: true, id: p.id, tier: p.tier, status: p.status, approvals: p.currentApprovals.length, requiredApprovers: p.requiredApprovers, ...(token ? { token } : {}) };
+  });
+
+  // Agent/CLI API: actions waiting for reviewers.
+  app.get('/api/pending', (req, reply) => {
+    if (!apiKeyOk(req.headers['x-litti-key'])) return reply.code(401).send({ ok: false, message: 'Invalid or missing x-litti-key header.' });
+    const base = baseUrlFor(req);
+    return { ok: true, pending: listPending().map(p => summary(p, base)) };
+  });
+
+  // Admin/CLI API: issue a personal, signed review link for one reviewer.
+  app.post<{ Params: { id: string }; Body: { reviewer?: string } }>('/api/actions/:id/review-link', (req, reply) => {
+    if (!adminKeyOk(req.headers)) {
+      return reply.code(401).send({ ok: false, message: process.env.LITTI_ADMIN_KEY ? 'Invalid or missing x-litti-admin-key header.' : 'Invalid or missing x-litti-key header.' });
+    }
+    const p = getPending(req.params.id);
+    if (!p) return reply.code(404).send({ ok: false, message: 'Unknown action.' });
+    if (p.status !== 'pending') return reply.code(409).send({ ok: false, message: `Action is already ${p.status}.` });
+    const reviewer = typeof req.body?.reviewer === 'string' ? req.body.reviewer.trim().slice(0, 64) : '';
+    if (!reviewer) return reply.code(400).send({ ok: false, message: 'Required: reviewer.' });
+    if (normName(reviewer) === normName(p.actionCard.agent)) {
+      return reply.code(403).send({ ok: false, message: 'The requester cannot review their own action.' });
+    }
+    const t = issueTicket(p.id, reviewer, normName(reviewer));
+    return { ok: true, reviewer, expiresInMinutes: 30, url: `${baseUrlFor(req)}/approve/${p.id}?t=${encodeURIComponent(t)}` };
   });
 
   // Pipeline API: check a token against the diff you are about to ship.
@@ -262,7 +339,7 @@ export function buildServer(opts: { logger?: boolean } = {}): FastifyInstance {
   return app;
 }
 
-/** Per-reviewer stats for the dashboard and `@litti stats`. */
+/** Per-reviewer stats for the dashboard and `litti stats`. */
 export function computeStats() {
   const byApprover: Record<string, { scores: number[]; rubberStamps: number; total: number }> = {};
   for (const r of allReceipts()) {

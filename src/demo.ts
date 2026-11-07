@@ -1,6 +1,7 @@
 /**
- * Demo runner. `npm run demo` posts into your Switch room when Switch is set up,
- * and falls back to an offline console stub otherwise (or with --offline).
+ * Demo runner. `npm run demo` starts Litti with three sample actions, a fresh
+ * database and typed reviewer names allowed. Notifications print to the
+ * terminal (and go to LITTI_NOTIFY_WEBHOOK if set).
  */
 process.on('unhandledRejection', err => console.error('⚠️  Unhandled error (still running):', err));
 import 'dotenv/config';
@@ -10,10 +11,8 @@ import { dirname, join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import open from 'open';
 import { initDb, enableDemoTamper } from './chain/db.js';
-import { buildServer, setSwitchClient, registerPending } from './approval/server.js';
-import { createSwitchStub } from './agents/switchStub.js';
-import { connectSwitch, type LiveSwitch } from './switch/client.js';
-import { createCommandHandler } from './switch/commands.js';
+import { buildServer, setNotifier, registerPending } from './approval/server.js';
+import { notifierFromEnv } from './notify/index.js';
 import { buildActionCard } from './agents/builder.js';
 import type { ActionKind } from './types.js';
 
@@ -22,7 +21,7 @@ const DIFFS = join(__dirname, '..', 'demo', 'sample-diffs');
 
 // Ephemeral per-run key so the standalone demo signs tokens without setup.
 if (!process.env.SECRET_KEY) process.env.SECRET_KEY = randomBytes(32).toString('hex');
-// Demo: reviewers can type a name (Sam, Priya) or use `@litti review <id>` links from Switch.
+// Demo: reviewers can type a name (Sam, Priya) or use `litti review <id> --as <name>` links.
 process.env.LITTI_ALLOW_SELF_ASSERTED ??= 'true';
 process.env.LITTI_DEPLOY_DIR ??= 'deployments';
 const PORT = Number(process.env.APPROVAL_SERVER_PORT) || 3847;
@@ -40,13 +39,7 @@ async function main() {
   initDb('litti-demo.db');
   enableDemoTamper();
 
-  let sw: LiveSwitch | null = null;
-  if (!process.argv.includes('--offline')) {
-    try { sw = await connectSwitch(); }
-    catch (err) { console.warn(`⚠️  ${(err as Error).message}
-   Running offline: room messages print here instead.`); }
-  }
-  setSwitchClient(sw ?? createSwitchStub());
+  setNotifier(notifierFromEnv());
 
   const app = buildServer();
   await app.listen({ port: PORT, host: '127.0.0.1' });
@@ -88,14 +81,11 @@ async function main() {
     console.log(`           ${url}`);
   }
 
-  console.log(`\n📊 Dashboard: ${BASE}/dashboard.html`);
+  console.log(`\n📥 Inbox:     ${BASE}/`);
+  console.log(`📊 Dashboard: ${BASE}/dashboard.html`);
   console.log('\n👉 Open an approval link, read the diff, pass the quiz, Countersign.');
-  console.log('   Approved actions deploy and appear on the dashboard.\n');
-
-  if (sw) {
-    void sw.listen(createCommandHandler(BASE));
-    console.log('💬 Approval cards are in your Switch room. Try: @litti pending');
-  }
+  console.log('   Approved actions deploy and appear on the dashboard.');
+  console.log('   In another terminal, try: npm run litti -- pending\n');
   if (!process.argv.includes("--no-open")) {
     await open(urls[0]).catch(() => console.log(`Open ${urls[0]} in your browser.`));
     await open(`${BASE}/dashboard.html`).catch(() => console.log(`Dashboard: ${BASE}/dashboard.html`));

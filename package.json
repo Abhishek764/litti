@@ -1,14 +1,14 @@
 {
   "name": "litti",
   "version": "1.0.0",
-  "description": "Approval gate for AI coding agents in Switch rooms: risk tiering, comprehension quizzes, rubber-stamp detection, diff-bound tokens, tamper-evident receipts.",
+  "description": "Proof of review for AI coding agents: risk tiering, comprehension quizzes, rubber-stamp detection, diff-bound tokens, tamper-evident receipts.",
   "type": "module",
   "scripts": {
     "start": "tsx src/index.ts",
     "demo": "tsx src/demo.ts",
-    "demo:offline": "tsx src/demo.ts --offline",
+    "litti": "tsx src/cli.ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsc --noEmit && tsx test/smoke.ts && tsx test/production.ts && tsx test/switch.ts"
+    "test": "tsc --noEmit && tsx test/smoke.ts && tsx test/production.ts && tsx test/cli.ts"
   },
   "dependencies": {
     "@fastify/formbody": "^8.0.1",
@@ -43,6 +43,9 @@
     "audit-log",
     "hash-chain",
     "security",
-    "code-review"
+    "code-review",
+    "claude-code",
+    "mcp",
+    "proof-of-review"
   ]
 }

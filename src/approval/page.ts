@@ -117,8 +117,8 @@ button:disabled{opacity:.4;cursor:not-allowed}
 <div class="card">
   <input type="hidden" id="actionId" value="${esc(card.id)}">
   <label class="q" for="approver">Approver</label>
-  <input id="approver" value="${esc(approver)}" ${identityLocked ? 'readonly' : ''} placeholder="${allowTyped ? 'Your name' : 'Open your personal link from Switch'}" style="width:100%;padding:10px;background:#0a0d12;border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-mono)">
-  <div class="idnote">${identityLocked ? '🔐 Verified reviewer' : allowTyped ? 'Demo mode: typed names accepted.' : '🔐 Send <code>@litti review ' + esc(card.id) + '</code> in your Switch room to get your personal review link.'}</div>
+  <input id="approver" value="${esc(approver)}" ${identityLocked ? 'readonly' : ''} placeholder="${allowTyped ? 'Your name' : 'Open your personal review link'}" style="width:100%;padding:10px;background:#0a0d12;border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-mono)">
+  <div class="idnote">${identityLocked ? '🔐 Verified reviewer' : allowTyped ? 'Demo mode: typed names accepted.' : '🔐 Get your personal review link: <code>litti review ' + esc(card.id) + ' --as &lt;you&gt;</code>'}</div>
   <input type="hidden" id="viewStamp" value="${esc(viewStamp)}">
   <input type="hidden" id="ticket" value="${esc(ticket)}">
   <div class="chkrow"><input type="checkbox" id="reviewed"><label for="reviewed">I have reviewed this change.</label></div>

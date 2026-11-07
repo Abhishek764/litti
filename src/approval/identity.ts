@@ -3,8 +3,8 @@
  *
  * Identity, strongest first:
  *  1. Trusted SSO header (LITTI_IDENTITY_HEADER, e.g. x-forwarded-email) set by your auth proxy.
- *  2. Review ticket: a signed, expiring link bound to one action and one Switch user,
- *     issued in the room with `@litti review <id>`.
+ *  2. Review ticket: a signed, expiring link bound to one action and one reviewer,
+ *     issued with `litti review <id> --as <name>` or POST /api/actions/:id/review-link.
  *  3. Self-asserted name: only when LITTI_ALLOW_SELF_ASSERTED=true (demo default).
  *
  * Review time is never trusted from the browser: the page carries a signed
@@ -81,11 +81,11 @@ export function resolveReviewer(
   }
   const t = verifyTicket(ticket, actionId);
   if (t) return { name: t.name, source: 'ticket' };
-  if (ticket) return { error: 'Your review link expired or is for a different action. Ask `@litti review <id>` in Switch for a new one.' };
+  if (ticket) return { error: 'Your review link expired or is for a different action. Ask for a new one (`litti review <id> --as <you>`).' };
   if (allowSelfAsserted() && typeof typedName === 'string' && typedName.trim()) {
     return { name: typedName.trim().slice(0, 64), source: 'self-asserted' };
   }
-  return { error: 'Reviewer identity required. In your Switch room, send `@litti review <id>` to get your personal review link.' };
+  return { error: 'Reviewer identity required. Get your personal review link with `litti review <id> --as <you>`.' };
 }
 
 /** Whether typed-in reviewer names are accepted (demo convenience, off in production). */

@@ -3,16 +3,20 @@ import type { ActionCard, RiskAssessment, Tier } from '../types.js';
 
 /** Assess the risk tier of an action card. Highest matching rule wins. */
 export function assessRisk(card: ActionCard): RiskAssessment {
-  // Tier 0: read-only actions auto-approve.
-  if (['read', 'lint', 'format', 'test'].includes(card.action)) {
+  const criticalPaths = ['migration', 'auth', 'security', 'prod', '.env', 'secret', 'password', 'credential'];
+  const destructivePatterns = /DROP\s|DROP$|TRUNCATE\s|DELETE\s+FROM|rm\s+-(?:rf|fr)\b|rm\s+-r\s+-f|rmdir|format\s+c:|push\s+(?:--force|-f)\b|chmod\s+-R\s+777/im;
+  const touchesCritical = card.touchedPaths.some(p => criticalPaths.some(cp => p.toLowerCase().includes(cp)));
+
+  // Tier 0: read-only actions auto-approve, unless the content says otherwise.
+  const readOnly = ['read', 'lint', 'format', 'test'].includes(card.action);
+  if (readOnly && !touchesCritical && !destructivePatterns.test(card.diff)) {
     return { tier: 0, reasons: ['Read-only operation'], requiredApprovers: 0 };
   }
 
   let tier: Tier = 1;
-  const reasons: string[] = ['Write operation'];
+  const reasons: string[] = [readOnly ? `Declared "${card.action}" but touches risky content` : 'Write operation'];
 
   // Path-based bumps.
-  const criticalPaths = ['migration', 'auth', 'security', 'prod', '.env', 'secret', 'password', 'credential'];
   for (const p of card.touchedPaths) {
     const lower = p.toLowerCase();
     if (criticalPaths.some(cp => lower.includes(cp))) {
@@ -29,7 +33,6 @@ export function assessRisk(card: ActionCard): RiskAssessment {
   }
 
   // Destructive operation bump.
-  const destructivePatterns = /DROP\s|TRUNCATE\s|DELETE\s+FROM|rm\s+-rf|rmdir|format\s+c:/i;
   if (card.action === 'delete' || destructivePatterns.test(card.diff)) {
     tier = 3;
     reasons.push('Destructive operation detected');

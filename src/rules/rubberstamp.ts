@@ -18,23 +18,22 @@ export function detectRubberStamp(
   }
   const lineCount = card.diff.split('\n').length;
 
-  // Too fast on a substantial diff.
+  let reason = '';
   if (submission.timeSpentMs < 10000 && lineCount > 50) {
-    return { flagged: true, reason: `Approved a ${lineCount}-line diff in ${(submission.timeSpentMs / 1000).toFixed(1)}s. That's not a review.` };
+    // Too fast on a substantial diff.
+    reason = `Approved a ${lineCount}-line diff in ${(submission.timeSpentMs / 1000).toFixed(1)}s. That's not a review.`;
+  } else if (!quizCorrect) {
+    // Quiz wrong — comprehension not demonstrated.
+    reason = 'Comprehension quiz failed.';
   }
+  if (!reason) return { flagged: false, reason: '' };
 
-  // Quiz wrong — comprehension not demonstrated.
-  if (!quizCorrect) {
-    return { flagged: true, reason: 'Comprehension quiz failed.' };
-  }
-
-  // Serial rubber-stamper: last 3 by this approver were also flagged.
-  const theirLastThree = recentByApprover
+  // Serial rubber-stamper: this one plus their last 2 were all flagged.
+  const theirLastTwo = recentByApprover
     .filter(r => r.approvals.some(a => a.approver === submission.approver))
-    .slice(-3);
-  if (theirLastThree.length >= 3 && theirLastThree.every(r => r.outcome === 'rubber-stamped')) {
-    return { flagged: true, reason: `${submission.approver} rubber-stamped 3+ in a row.` };
+    .slice(-2);
+  if (theirLastTwo.length >= 2 && theirLastTwo.every(r => r.outcome === 'rubber-stamped')) {
+    reason += ` ${submission.approver} has rubber-stamped 3+ in a row.`;
   }
-
-  return { flagged: false, reason: '' };
+  return { flagged: true, reason };
 }

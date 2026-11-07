@@ -51,7 +51,7 @@ try {
   assert.equal(registered.name, 'litti');
   assert.equal(registered.integration_profile.connection_model, 'always_on');
   assert.ok(existsSync(CREDS), 'credentials saved');
-  assert.deepEqual(ops, ['update_agent_detail', 'list_rooms']);
+  assert.deepEqual(ops, ['list_rooms', 'update_agent_detail']);
   assert.equal(sw.roomId, 'room-1');
 
   await sw.postMessage('hello');

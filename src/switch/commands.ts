@@ -23,18 +23,46 @@ const HELP = [
 
 /** Pull a JSON object out of a chat message (```json fenced or bare). */
 function extractJson(body: string): any | null {
-  const fenced = body.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const raw = fenced ? fenced[1] : body.slice(body.indexOf('{'), body.lastIndexOf('}') + 1);
+  // Chat apps turn quotes into smart quotes; undo that first.
+  const clean = body.replace(/[\u201C\u201D\u201E\u2033]/g, '"').replace(/[\u2018\u2019\u2032]/g, "'");
+  const fenced = clean.match(/(?:```|~~~)(?:json)?\s*([\s\S]*?)(?:```|~~~)/);
+  let raw = fenced && fenced[1].includes('{') ? fenced[1] : '';
+  if (!raw) {
+    const start = clean.indexOf('{');
+    const end = clean.lastIndexOf('}');
+    raw = start >= 0 && end > start ? clean.slice(start, end + 1) : '';
+  }
   if (!raw.trim()) return null;
-  try { return JSON.parse(raw); } catch { return null; }
+  try { return JSON.parse(raw); } catch { /* try again below */ }
+  // People paste diffs with real line breaks inside the "diff" string. Escape them.
+  let out = '';
+  let inStr = false;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (inStr && ch === '\\') { out += ch + (raw[i + 1] ?? ''); i++; continue; }
+    if (ch === '"') inStr = !inStr;
+    if (inStr && ch === '\n') { out += '\\n'; continue; }
+    if (inStr && ch === '\r') continue;
+    if (inStr && ch === '\t') { out += '\\t'; continue; }
+    out += ch;
+  }
+  try { return JSON.parse(out); } catch { return null; }
 }
+
+const COMMANDS = ['propose', 'request', 'review', 'status', 'pending', 'verify', 'stats', 'approve', 'help'];
 
 /** Build the command handler. `baseUrl` is where reviewers open approval pages. */
 export function createCommandHandler(baseUrl: string) {
   return async (e: SwitchEvent): Promise<string | null> => {
     // Drop the leading mention(s), keep the command.
-    const text = e.body.replace(/^\s*(@\S+\s*)+/, '').trim();
-    const [cmd = 'help', arg = ''] = text.split(/\s+/);
+    let text = e.body.replace(/^\s*(?:(?:<@[!&]?[^>]+>|@[\w.\-]+)[:,]?\s*)+/i, '').trim();
+    // If the first word isn't a command (mention mid-sentence), jump to the first command word.
+    const words = text.split(/\s+/);
+    const firstCmd = words.findIndex(w => COMMANDS.includes(w.toLowerCase().replace(/[^a-z]/g, '')));
+    if (firstCmd > 0) text = words.slice(firstCmd).join(' ');
+    const [rawCmd = 'help', rawArg = ''] = text.split(/\s+/);
+    const cmd = rawCmd.replace(/[^A-Za-z]/g, '') || 'help';
+    const arg = rawArg.replace(/[`<>*.,!'"]/g, '');
     const c = cmd.toLowerCase();
 
     if (c === 'propose' || c === 'request') {

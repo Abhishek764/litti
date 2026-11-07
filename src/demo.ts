@@ -2,6 +2,7 @@
  * Demo runner. `npm run demo` posts into your Switch room when Switch is set up,
  * and falls back to an offline console stub otherwise (or with --offline).
  */
+process.on('unhandledRejection', err => console.error('⚠️  Unhandled error (still running):', err));
 import 'dotenv/config';
 import { readFileSync, rmSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -96,8 +97,8 @@ async function main() {
     console.log('💬 Approval cards are in your Switch room. Try: @litti pending');
   }
   if (!process.argv.includes("--no-open")) {
-    await open(urls[0]);
-    await open(`${BASE}/dashboard.html`);
+    await open(urls[0]).catch(() => console.log(`Open ${urls[0]} in your browser.`));
+    await open(`${BASE}/dashboard.html`).catch(() => console.log(`Dashboard: ${BASE}/dashboard.html`));
   }
 }
 

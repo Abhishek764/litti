@@ -254,7 +254,7 @@ See [SECURITY.md](SECURITY.md) for the threat model and deployment notes.
 ## Development
 
 ```bash
-npm test     # typecheck + 27 checks: core flow, production hardening, Switch client (mock bridge)
+npm test     # typecheck + checks: core flow, production hardening, Switch client (mock bridge)
 ```
 
 Stack: Node.js + TypeScript · Fastify · SQLite (better-sqlite3) · Node `crypto` · plain HTML/CSS/JS. No frontend framework, no LLM in the trust path.

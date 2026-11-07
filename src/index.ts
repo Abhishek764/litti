@@ -1,4 +1,5 @@
 /** Production entry point. Validates config, joins Switch as @litti, serves review pages. */
+process.on('unhandledRejection', err => console.error('⚠️  Unhandled error (still running):', err));
 import 'dotenv/config';
 import { initDb, closeDb } from './chain/db.js';
 import { buildServer, setSwitchClient } from './approval/server.js';

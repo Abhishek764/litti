@@ -15,7 +15,7 @@ export function renderInbox(pending: PendingAction[], baseUrl: string): string {
 
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Litti · Review inbox</title>
+<title>Litti · Review inbox</title><link rel="icon" href="/favicon.ico" sizes="48x48"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="manifest" href="/site.webmanifest"><meta name="theme-color" content="#0A0D12">
 <style>
   :root { --bg:#0a0d12; --card:#121720; --border:#232b38; --text:#e6edf3; --muted:#8b97a8; --accent:#f5b942; }
   * { box-sizing:border-box } body { margin:0; background:var(--bg); color:var(--text); font:15px/1.5 system-ui,sans-serif }
@@ -30,8 +30,8 @@ export function renderInbox(pending: PendingAction[], baseUrl: string): string {
   .empty { padding:40px; text-align:center; color:var(--muted); border:1px dashed var(--border); border-radius:10px }
 </style></head>
 <body><main>
-  <nav><a href="/">Inbox</a><a href="/dashboard.html">Dashboard</a></nav>
-  <h1 style="margin-top:20px">🔒 Waiting for review</h1>
+  <nav style="display:flex;align-items:center;gap:8px"><a href="/" style="margin-right:20px"><img src="/brand/litti-logo.svg" alt="Litti" height="30" style="display:block;height:30px;width:auto"></a><a href="/">Inbox</a><a href="/dashboard.html">Dashboard</a></nav>
+  <h1 style="margin-top:24px">Waiting for review</h1>
   <p class="sub">Open an action, read the diff, pass the quiz. Nothing runs until enough reviewers pass.</p>
   ${rows || '<div class="empty">✅ Nothing waiting for review.</div>'}
 </main></body></html>`;

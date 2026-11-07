@@ -51,7 +51,7 @@ export function renderApprovalPage(args: {
 
   return `<!doctype html><html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Litti — Countersign</title><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Ctext y=%27.9em%27 font-size=%2790%27%3E%F0%9F%94%92%3C/text%3E%3C/svg%3E">
+<title>Litti — Countersign</title><link rel="icon" href="/favicon.ico" sizes="48x48"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="manifest" href="/site.webmanifest"><meta name="theme-color" content="#0A0D12">
 <style>
 :root{
   --bg:#0d1117;--surface:#161b22;--border:#30363d;--text:#e6edf3;--text-muted:#8b949e;
@@ -90,7 +90,7 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .scrollnote{color:var(--yellow);font-size:12px;margin-top:8px}
 </style></head>
 <body><div class="wrap">
-<h1>🔒 LITTI · COUNTERSIGN</h1>
+<h1 style="display:flex;align-items:center;gap:12px"><img src="/brand/litti-logo.svg" alt="Litti" height="30" style="display:block;height:30px;width:auto"><span>· COUNTERSIGN</span></h1>
 <div class="sub">Prove you read it. Your signature binds to this exact diff.</div>
 
 <div class="card">

@@ -1,4 +1,11 @@
-# 🔒 LITTI
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/logo/litti-horizontal-dark.svg">
+    <img alt="Litti" src="docs/brand/logo/litti-horizontal-light.svg" width="360">
+  </picture>
+</p>
+
+# Litti
 
 [![CI](https://github.com/Abhishek764/litti/actions/workflows/ci.yml/badge.svg)](https://github.com/Abhishek764/litti/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
@@ -256,6 +263,10 @@ npm test     # typecheck + core flow, production hardening, and CLI checks
 ```
 
 Stack: Node.js + TypeScript · Fastify · SQLite (better-sqlite3) · Node `crypto` · plain HTML/CSS/JS. No frontend framework, no LLM in the trust path.
+
+## Brand
+
+Logo files, colours and usage rules: [docs/brand](docs/brand/README.md).
 
 ## Contributing
 

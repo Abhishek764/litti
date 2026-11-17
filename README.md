@@ -154,9 +154,18 @@ In production each reviewer needs a verified identity, strongest first:
 
 ## Team notifications
 
-Set `LITTI_NOTIFY_WEBHOOK` to a Slack or Discord incoming-webhook URL (comma-separate several).
-Litti posts approval cards, countersign progress, rubber-stamp warnings and deploy results there.
-Approving never happens in chat: reviewers always open the review page and pass the quiz.
+Litti posts approval cards, countersign progress, rubber-stamp warnings and deploy results to your team.
+Approving never happens in chat or in a ticket: reviewers always open the review page and pass the quiz.
+Only metadata is sent (description, paths, risk reasons, line count, diff hash). The diff itself never leaves your server.
+
+| Integration | Set | What you get |
+|---|---|---|
+| **Slack app** | `SLACK_BOT_TOKEN` (`xoxb-…`, scope `chat:write`) + `SLACK_CHANNEL` | Block Kit card with a *Review in Litti* button. Updates arrive as thread replies; rubber-stamps are broadcast to the channel. When the action closes, the card is edited in place. |
+| **Discord** | `LITTI_DISCORD_WEBHOOK` (channel webhook URL) | Colour-coded embed linking to the review page, follow-up embeds per event, card recoloured on close. `@everyone`/role pings are always disabled. |
+| **Jira** | `JIRA_BASE_URL`, `JIRA_PROJECT_KEY`, `JIRA_API_TOKEN`, plus `JIRA_EMAIL` for Jira Cloud | One issue per action at `JIRA_MIN_TIER` or higher (default 2), labelled `litti` + `litti-tier-N`. Every review event is a comment. Set `JIRA_DONE_TRANSITION` (e.g. `Done`) to move the issue on approval. Without `JIRA_EMAIL`, Litti uses a Data Center personal access token (REST v2). |
+| **Any webhook** | `LITTI_NOTIFY_WEBHOOK` (comma-separate several) | Plain text `{text, content}` that Slack and Discord incoming webhooks accept. |
+
+Incomplete settings are reported at startup and that integration stays off; a failing integration never blocks a review.
 
 ---
 
@@ -176,6 +185,9 @@ or `npm start` on any Node 20.10+ host. `npm start` validates the config and ref
 | `LITTI_API_KEY` | Required header `x-litti-key` for the agent/pipeline/CLI API. |
 | `LITTI_ADMIN_KEY` | Required header `x-litti-admin-key` to issue review links. Give it to reviewers' admins, never to agents. Without it, the API key can issue links. |
 | `LITTI_NOTIFY_WEBHOOK` | Slack/Discord incoming webhook(s) for approval cards and updates. |
+| `SLACK_BOT_TOKEN`, `SLACK_CHANNEL` | Slack app: threaded approval cards (see Team notifications). |
+| `LITTI_DISCORD_WEBHOOK` | Discord embeds with a review link. |
+| `JIRA_BASE_URL`, `JIRA_PROJECT_KEY`, `JIRA_API_TOKEN`, `JIRA_EMAIL`, `JIRA_ISSUE_TYPE`, `JIRA_MIN_TIER`, `JIRA_DONE_TRANSITION` | Jira issue per risky action. |
 | `LITTI_IDENTITY_HEADER` | Trust a header from your SSO proxy (e.g. `x-forwarded-email`) as reviewer identity. |
 | `LITTI_DEPLOY_WEBHOOK` | Approved actions are POSTed here, signed in `x-litti-signature` (HMAC-SHA256). |
 | `LITTI_WEBHOOK_SECRET` | Deploy webhook signing key (defaults to `SECRET_KEY`). |
@@ -231,7 +243,7 @@ Run with `npm run litti -- <command>`.
 | Rubber-stamp detector | [src/rules/rubberstamp.ts](src/rules/rubberstamp.ts) | Too fast, wrong answer, serial rubber-stamper |
 | Tokens | [src/approval/token.ts](src/approval/token.ts) | HMAC-SHA256 token bound to the diff hash and approvers |
 | Executor | [src/deploy/executor.ts](src/deploy/executor.ts) | Validates and burns the token, then signed webhook or deploy record |
-| Notifiers | [src/notify/index.ts](src/notify/index.ts) | Terminal + Slack/Discord webhooks |
+| Notifiers | [src/notify/](src/notify/) | Terminal, webhooks, Slack app, Discord, Jira |
 | CLI | [src/cli.ts](src/cli.ts) | `litti` command over the HTTP API |
 | Receipt chain | [src/chain/](src/chain/) | SQLite storage, SHA-256 hash-linked receipts, verification |
 

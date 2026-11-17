@@ -202,6 +202,8 @@ or `npm start` on any Node 20.10+ host. `npm start` validates the config and ref
 `POST /api/tokens/verify {token, diff}`. It returns `valid: false` if the diff changed even one byte.
 Example receiver: [docs/webhook-receiver.md](docs/webhook-receiver.md).
 
+**Architecture and roadmap to HA, hybrid and multi-region:** [docs/architecture.md](docs/architecture.md).
+
 **Tuning:** add your own critical paths in [src/rules/tiering.ts](src/rules/tiering.ts) and quiz templates in [src/agents/gatekeeper.ts](src/agents/gatekeeper.ts).
 
 ### CLI

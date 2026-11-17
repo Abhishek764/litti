@@ -102,8 +102,21 @@ export interface PendingAction {
   createdAt: string;
 }
 
-/** Where Litti tells the team about approvals (console, webhook, ...). Best-effort. */
+/** Something that happened to an action after its card was posted. */
+export interface ActionEvent {
+  kind: 'countersigned' | 'rubber-stamped' | 'approved' | 'execution-failed';
+  card: ActionCard;
+  /** Human-readable summary, same text plain notifiers receive. */
+  message: string;
+  approvers: string[];
+  requiredApprovers: number;
+  attentionScore?: number;
+}
+
+/** Where Litti tells the team about approvals (console, webhook, Slack, Discord, Jira). Best-effort. */
 export interface Notifier {
   postCard(card: ActionCard, assessment: RiskAssessment, approvalUrl: string): Promise<void> | void;
   postMessage(message: string): Promise<void> | void;
+  /** Optional: follow-up tied to an action (thread reply, issue comment). Falls back to postMessage. */
+  postUpdate?(event: ActionEvent): Promise<void> | void;
 }

@@ -6,10 +6,17 @@
  *  - console (always on): prints to the terminal
  *  - webhook (LITTI_NOTIFY_WEBHOOK): POSTs {text, content} as JSON, which
  *    Slack and Discord incoming webhooks both accept. Comma-separate several URLs.
+ *  - Slack app (SLACK_BOT_TOKEN + SLACK_CHANNEL): Block Kit card, threaded updates.
+ *  - Discord (LITTI_DISCORD_WEBHOOK): rich embeds, card edited when the action closes.
+ *  - Jira (JIRA_BASE_URL + JIRA_PROJECT_KEY + JIRA_API_TOKEN): issue per risky action.
  */
-import type { ActionCard, Notifier, RiskAssessment } from '../types.js';
+import type { ActionCard, ActionEvent, Notifier, RiskAssessment } from '../types.js';
+import { slackNotifier } from './slack.js';
+import { discordNotifier, isDiscordWebhook } from './discord.js';
+import { jiraNotifier } from './jira.js';
+import { safeUrl } from './http.js';
 
-const TIER_LABEL = ['🟢 Tier 0 · auto', '🟡 Tier 1 · 1 reviewer', '🟠 Tier 2 · 2 reviewers', '🔴 Tier 3 · 3 reviewers'];
+import { TIER_LABEL } from './http.js';
 
 /** Human-readable approval card, shared by every notifier. */
 export function formatCard(card: ActionCard, a: RiskAssessment, approvalUrl: string): string {
@@ -39,7 +46,7 @@ export function webhookNotifier(url: string): Notifier {
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ text, content: text.slice(0, 2000) }),
+        body: JSON.stringify({ text, content: text.slice(0, 2000), allowed_mentions: { parse: [] } }),
         signal: AbortSignal.timeout(10000),
       });
       if (!res.ok) console.error(`⚠️  Webhook notify failed: HTTP ${res.status}`);
@@ -56,12 +63,43 @@ export function webhookNotifier(url: string): Notifier {
 /** Fan one notification out to several notifiers. */
 export function multiNotifier(list: Notifier[]): Notifier {
   return {
-    async postCard(card, a, url) { await Promise.allSettled(list.map(n => Promise.resolve(n.postCard(card, a, url)))); },
-    async postMessage(message) { await Promise.allSettled(list.map(n => Promise.resolve(n.postMessage(message)))); },
+    async postCard(card, a, url) { await Promise.allSettled(list.map(async n => n.postCard(card, a, url))); },
+    async postMessage(message) { await Promise.allSettled(list.map(async n => n.postMessage(message))); },
+    async postUpdate(event: ActionEvent) {
+      await Promise.allSettled(list.map(async n => (n.postUpdate ? n.postUpdate(event) : n.postMessage(event.message))));
+    },
   };
 }
 
-/** Console plus any webhooks configured in LITTI_NOTIFY_WEBHOOK. */
+/** Slack, Discord and Jira notifiers from environment variables. Misconfiguration warns, never crashes. */
+export function integrationsFromEnv(env = process.env): Notifier[] {
+  const out: Notifier[] = [];
+  if (env.SLACK_BOT_TOKEN || env.SLACK_CHANNEL) {
+    if (!env.SLACK_BOT_TOKEN?.startsWith('xox') || !env.SLACK_CHANNEL) console.warn('⚠️  Slack: set both SLACK_BOT_TOKEN (xoxb-...) and SLACK_CHANNEL. Slack disabled.');
+    else out.push(slackNotifier({ token: env.SLACK_BOT_TOKEN, channel: env.SLACK_CHANNEL }));
+  }
+  if (env.LITTI_DISCORD_WEBHOOK) {
+    if (!isDiscordWebhook(env.LITTI_DISCORD_WEBHOOK)) console.warn('⚠️  LITTI_DISCORD_WEBHOOK must be a https://discord.com/api/webhooks/... URL. Discord disabled.');
+    else out.push(discordNotifier({ webhookUrl: env.LITTI_DISCORD_WEBHOOK }));
+  }
+  if (env.JIRA_BASE_URL || env.JIRA_PROJECT_KEY || env.JIRA_API_TOKEN) {
+    const base = safeUrl(env.JIRA_BASE_URL);
+    const project = env.JIRA_PROJECT_KEY?.trim().toUpperCase();
+    if (!base || !project || !/^[A-Z][A-Z0-9_]+$/.test(project) || !env.JIRA_API_TOKEN) {
+      console.warn('⚠️  Jira: set JIRA_BASE_URL (https), JIRA_PROJECT_KEY and JIRA_API_TOKEN (+ JIRA_EMAIL for Jira Cloud). Jira disabled.');
+    } else {
+      const minTier = Number(env.JIRA_MIN_TIER ?? 2);
+      out.push(jiraNotifier({
+        baseUrl: base, projectKey: project, apiToken: env.JIRA_API_TOKEN, email: env.JIRA_EMAIL || undefined,
+        issueType: env.JIRA_ISSUE_TYPE || undefined, doneTransition: env.JIRA_DONE_TRANSITION || undefined,
+        minTier: Number.isInteger(minTier) && minTier >= 1 && minTier <= 3 ? minTier : 2,
+      }));
+    }
+  }
+  return out;
+}
+
+/** Console, any LITTI_NOTIFY_WEBHOOK webhooks, and the Slack / Discord / Jira integrations. */
 export function notifierFromEnv(): Notifier {
   // Operator-set config only (never from requests). Still, accept http(s) URLs only.
   const hooks = (process.env.LITTI_NOTIFY_WEBHOOK || '').split(',').map(s => s.trim()).filter(u => {
@@ -70,5 +108,5 @@ export function notifierFromEnv(): Notifier {
     console.warn(`⚠️  Ignoring LITTI_NOTIFY_WEBHOOK entry that is not an http(s) URL: ${u.slice(0, 60)}`);
     return false;
   });
-  return multiNotifier([consoleNotifier(), ...hooks.map(webhookNotifier)]);
+  return multiNotifier([consoleNotifier(), ...hooks.map(webhookNotifier), ...integrationsFromEnv()]);
 }

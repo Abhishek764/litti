@@ -4,7 +4,7 @@ import fastifyStatic from '@fastify/static';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { createHash, timingSafeEqual } from 'node:crypto';
-import type { ActionCard, ApprovalSubmission, ApprovalToken, Notifier, PendingAction, QuizResult, Tier } from '../types.js';
+import type { ActionCard, ActionEvent, ApprovalSubmission, ApprovalToken, Notifier, PendingAction, QuizResult, Tier } from '../types.js';
 import { buildActionCard } from '../agents/builder.js';
 import { gatekeep } from '../agents/gatekeeper.js';
 import { assessRisk } from '../rules/tiering.js';
@@ -30,9 +30,12 @@ let notifier: Notifier | null = null;
 /** Set where approval cards and updates are sent (console, webhook, ...). */
 export function setNotifier(n: Notifier | null): void { notifier = n; }
 
-/** Notify the team without ever failing the request. */
-function announce(message: string): void {
-  try { void Promise.resolve(notifier?.postMessage(message)).catch(() => {}); } catch { /* best-effort */ }
+/** Notify the team without ever failing the request. Events let Slack/Discord/Jira thread the update. */
+function announce(message: string, event?: Omit<ActionEvent, 'message'>): void {
+  try {
+    const p = event && notifier?.postUpdate ? notifier.postUpdate({ ...event, message }) : notifier?.postMessage(message);
+    void Promise.resolve(p).catch(() => {});
+  } catch { /* best-effort */ }
 }
 
 /** Public base URL for links. Falls back to the request's host. */
@@ -214,7 +217,8 @@ export function buildServer(opts: { logger?: boolean } = {}): FastifyInstance {
       // The flagged attempt never counts, and earlier approvals are wiped: everyone re-reviews.
       updatePending(pending.id, [], 'pending');
       setSetting('pending_tier_bump', '1');
-      announce(`⚠️ @${sub.approver} ${rs.reason} Blocked. All reviews on "${card.description}" reset, and the next action's tier is bumped +1.`);
+      announce(`⚠️ @${sub.approver} ${rs.reason} Blocked. All reviews on "${card.description}" reset, and the next action's tier is bumped +1.`,
+        { kind: 'rubber-stamped', card, approvers: [sub.approver], requiredApprovers: pending.requiredApprovers, attentionScore: score });
       return { ok: false, message: `⚠️ Rubber-stamp blocked: ${rs.reason}` };
     }
 
@@ -229,7 +233,8 @@ export function buildServer(opts: { logger?: boolean } = {}): FastifyInstance {
     const approvals = [...pending.currentApprovals, sub];
     if (approvals.length < pending.requiredApprovers) {
       updatePending(pending.id, approvals, 'pending');
-      announce(`✍️ ${sub.approver} countersigned "${card.description}" (${approvals.length}/${pending.requiredApprovers}). Waiting for ${pending.requiredApprovers - approvals.length} more reviewer(s).`);
+      announce(`✍️ ${sub.approver} countersigned "${card.description}" (${approvals.length}/${pending.requiredApprovers}). Waiting for ${pending.requiredApprovers - approvals.length} more reviewer(s).`,
+        { kind: 'countersigned', card, approvers: approvals.map(a => a.approver), requiredApprovers: pending.requiredApprovers });
       return { ok: true, message: `✅ Countersigned. ${approvals.length}/${pending.requiredApprovers} approvers — waiting for the rest.` };
     }
 
@@ -243,7 +248,8 @@ export function buildServer(opts: { logger?: boolean } = {}): FastifyInstance {
 
     const avgAttention = Math.round(approvals.reduce((s, a) => s + attentionScore(card, true, a.scrolledToBottom, a.timeSpentMs), 0) / approvals.length);
     appendReceipt({ actionCard: card, tier: pending.tier, approvals, outcome: 'approved', attentionScore: avgAttention });
-    announce(`${result.message} — "${card.description}"\nReviewed by ${approvals.map(a => a.approver).join(', ')} · attention ${avgAttention}/100 · diff ${diffHash.slice(0, 12)}… · receipt chained.`);
+    announce(`${result.message} — "${card.description}"\nReviewed by ${approvals.map(a => a.approver).join(', ')} · attention ${avgAttention}/100 · diff ${diffHash.slice(0, 12)}… · receipt chained.`,
+      { kind: result.ok ? 'approved' : 'execution-failed', card, approvers: approvals.map(a => a.approver), requiredApprovers: pending.requiredApprovers, attentionScore: avgAttention });
     return { ok: result.ok, message: result.message };
   });
 

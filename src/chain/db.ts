@@ -201,6 +201,15 @@ export function listPending(): PendingAction[] {
   return rows.map(r => getPending(r.id)!).filter(Boolean);
 }
 
+/** Most recent action for an exact diff (any status), created within `withinMs`. */
+export function latestByDiffHash(diffHash: string, withinMs = 24 * 3600 * 1000): PendingAction | null {
+  const since = new Date(Date.now() - withinMs).toISOString();
+  const row = getDb().prepare(
+    "SELECT id FROM pending_actions WHERE json_extract(action_card, '$.diffHash') = ? AND created_at >= ? ORDER BY created_at DESC, rowid DESC LIMIT 1",
+  ).get(diffHash, since) as { id: string } | undefined;
+  return row ? getPending(row.id) : null;
+}
+
 /** Update a pending action's approvals + status. */
 export function updatePending(id: string, approvals: unknown[], status: string): void {
   getDb().prepare('UPDATE pending_actions SET current_approvals = ?, status = ? WHERE id = ?')

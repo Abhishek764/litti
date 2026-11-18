@@ -42,3 +42,19 @@ Then:
 
 You never approve your own actions, and you never ask people to "just click approve".
 Read-only work (reading code, lint, format, tests) does not need approval.
+
+
+## When a Litti hook blocks a command
+
+If a command is denied with a message starting with `🔒 Litti`:
+
+1. Stop. Show the user the review link from the message and say what the command does.
+2. Do not retry, rephrase, split the command, or reach the same result another way.
+3. Do not edit files while waiting: any change makes the approval invalid and starts a new review.
+4. When the user says it's approved, run exactly the same command again.
+
+## Review notes
+
+Reviewers can comment on your working-tree diff at `/changes`. Before asking for review, and whenever
+the user mentions notes, run `litti notes`, address each one, answer with `litti reply <id> "…"`, and
+`litti resolve <id>` once it's handled.

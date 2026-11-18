@@ -116,6 +116,34 @@ Walk through the scenarios: [demo/scenarios.md](demo/scenarios.md).
 
 ## Connect your coding agent
 
+### Enforce it with a hook (Claude Code, Codex, OpenCode)
+
+One command makes risky agent commands impossible to run without a review:
+
+```bash
+npm run litti -- install claude   --dir ~/code/my-project   # .claude/settings.json  (PreToolUse hook)
+npm run litti -- install codex    --dir ~/code/my-project   # .codex/hooks.json      (PreToolUse hook)
+npm run litti -- install opencode --dir ~/code/my-project   # .opencode/plugin/litti.ts
+npm run litti -- install all      --dir ~/code/my-project
+```
+
+What happens next:
+
+1. Everyday commands (tests, builds, `git status`, edits) run instantly. The hook never calls the server for them.
+2. A **risky** command (`git commit`, `git push`, deploys, `npm publish`, migrations, `rm -rf`, `DROP TABLE`,
+   `terraform apply`, `kubectl delete`…) is **denied at once** with a review link. The command *and* the
+   working-tree diff it would ship are what the reviewer sees and is quizzed on.
+3. The agent tells you; you review. When approved, the agent runs **the same command** again and it is
+   allowed **once**. If the code changed in the meantime, it's a new review.
+4. If Litti is down, risky commands are blocked (fail closed). `LITTI_HOOK_FAIL_OPEN=true` turns that off for local experiments.
+
+Tune with `LITTI_GATE_COMMIT=false` (don't gate commits) and `LITTI_GATE_PATTERNS` (extra regexes, `;;`-separated).
+Set `LITTI_URL` and `LITTI_API_KEY` in the agent's environment if the server isn't local or uses a key.
+Codex: hooks may need enabling in your Codex config, and some versions skip hooks on Windows; see the
+[Codex hooks docs](https://developers.openai.com/codex/hooks).
+
+### Or ask Litti from your agent's instructions
+
 Give your agent the rule in [docs/agent-instructions.md](docs/agent-instructions.md) (system prompt,
 `CLAUDE.md`, `AGENTS.md`, or similar). In short: before any migration, deploy, delete, or change to
 auth/security/prod config, ask Litti and wait for **APPROVED**.
@@ -223,6 +251,7 @@ or `npm start` on any Node 20.10+ host. `npm start` validates the config and ref
 | `LITTI_DEPLOY_DIR` | Where deploy records are written when no deploy webhook is set (default `deployments`). |
 | `LITTI_REPO_PATH` | Git repository the Changes view watches (default: the server's working directory). |
 | `LITTI_AGENT_NAME` | Name shown for agent replies and on actions sent from Changes (default `agent`). |
+| `LITTI_GATE_COMMIT`, `LITTI_GATE_PATTERNS`, `LITTI_HOOK_FAIL_OPEN` | Agent hook tuning (see Connect your coding agent). |
 | `LITTI_CHALLENGES` | Comma list of allowed check kinds (`quiz,spot-line,type-in,canary,count,explain`). Default: all. |
 | `LITTI_ALLOW_SELF_ASSERTED` | `true` lets reviewers type a name. Demo only. Leave unset in production. |
 | `LITTI_URL` | CLI only: where the `litti` command finds the server (default `http://127.0.0.1:3847`). |

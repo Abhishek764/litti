@@ -20,7 +20,7 @@ import { appendReceipt, attentionScore } from '../chain/receipt.js';
 import { verifyChain } from '../chain/verify.js';
 import {
   insertPending, getPending, updatePending, allReceipts, corruptReceipt,
-  getSetting, setSetting, setApprovalToken, getApprovalToken, listPending,
+  getSetting, setSetting, setApprovalToken, getApprovalToken, listPending, latestByDiffHash,
 } from '../chain/db.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -301,6 +301,61 @@ export function buildServer(opts: { logger?: boolean } = {}): FastifyInstance {
       return { ok: true, id, tier, status: 'approved', token };
     }
     return { ok: true, id, tier, status: 'pending', approvalUrl: url, requiredApprovers: tier === 1 ? 1 : tier === 2 ? 2 : 3 };
+  });
+
+  // Agent hooks (Claude Code, Codex, OpenCode): may this risky command run now?
+  // Same diff + command → same action, so a retry after approval is allowed exactly once.
+  app.post<{ Body: Partial<ActionCard> & { command?: string } }>('/api/gate', (req, reply) => {
+    if (!apiKeyOk(req.headers['x-litti-key'])) return reply.code(401).send({ ok: false, decision: 'deny', message: '🔒 Litti: invalid or missing x-litti-key. Set LITTI_API_KEY for the agent hook.' });
+    const b = req.body ?? {};
+    if (!b.action || !ACTIONS.includes(b.action) || typeof b.diff !== 'string' || !b.description) {
+      return reply.code(400).send({ ok: false, decision: 'deny', message: '🔒 Litti: malformed gate request.' });
+    }
+    if (Buffer.byteLength(b.diff) > MAX_DIFF_BYTES) {
+      return reply.code(413).send({ ok: false, decision: 'deny', message: '🔒 Litti: the change is over 512 KB — too large to review in one go. Split it into smaller commits.' });
+    }
+    const card = buildActionCard({
+      agent: typeof b.agent === 'string' && b.agent ? b.agent.slice(0, 64) : undefined,
+      action: b.action,
+      description: String(b.description).slice(0, 300),
+      diff: b.diff,
+      touchedPaths: Array.isArray(b.touchedPaths) ? b.touchedPaths.map(String).slice(0, 500) : [],
+      reversible: b.reversible ?? false,
+      rollbackPlan: String(b.rollbackPlan ?? '').slice(0, 2000),
+    });
+    const base = baseUrlFor(req);
+    const denyMsg = (p: { id: string; tier: number; requiredApprovers: number; approvals: number }, url: string, fresh: boolean) => [
+      `🔒 Litti: this command needs human review before it runs (Tier ${p.tier} · ${p.approvals}/${p.requiredApprovers} reviewer(s) so far).`,
+      `Review link: ${url}`,
+      fresh ? 'A review request was just created.' : 'It is still waiting for review.',
+      'Tell the user to open the link and review it. Do NOT retry, rephrase, split or work around this command until they confirm it is approved;',
+      'then run exactly the same command again with no further file changes (any change starts a new review).',
+      `Status: litti status ${p.id}`,
+    ].join('\n');
+
+    const prev = latestByDiffHash(card.diffHash);
+    if (prev?.status === 'pending') {
+      return { ok: true, decision: 'deny', id: prev.id, tier: prev.tier, approvalUrl: `${base}/approve/${prev.id}`,
+        message: denyMsg({ id: prev.id, tier: prev.tier, requiredApprovers: prev.requiredApprovers, approvals: prev.currentApprovals.length }, `${base}/approve/${prev.id}`, false) };
+    }
+    if (prev?.status === 'approved' && !getSetting(`gate_used:${prev.id}`)) {
+      setSetting(`gate_used:${prev.id}`, new Date().toISOString());
+      const who = prev.currentApprovals.map(a => a.approver).join(', ') || 'policy (Tier 0)';
+      announce(`▶️ ${card.agent} ran the approved command for "${prev.actionCard.description}" (approved by ${who}).`);
+      return { ok: true, decision: 'allow', id: prev.id, tier: prev.tier, message: `✅ Litti: approved by ${who}. Running once.` };
+    }
+
+    const { id, url, tier } = registerPending(card, base);
+    if (tier === 0) {
+      const token = createToken(card.id, card.diffHash, []);
+      setApprovalToken(id, token);
+      updatePending(id, [], 'approved');
+      setSetting(`gate_used:${id}`, new Date().toISOString());
+      appendReceipt({ actionCard: card, tier, approvals: [], outcome: 'auto-approved', attentionScore: 100 });
+      return { ok: true, decision: 'allow', id, tier, message: '✅ Litti: Tier 0, allowed.' };
+    }
+    const required = tier === 1 ? 1 : tier === 2 ? 2 : 3;
+    return { ok: true, decision: 'deny', id, tier, approvalUrl: url, message: denyMsg({ id, tier, requiredApprovers: required, approvals: 0 }, url, true) };
   });
 
   // Agent API: action status. Includes the signed token once approved; never the quiz answer.

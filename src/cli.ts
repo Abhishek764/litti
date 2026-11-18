@@ -11,6 +11,7 @@
  *   litti reply <note-id> <text…>        answer a note as the agent
  *   litti resolve <note-id>              close a thread once handled
  *   litti submit [description…]          send the current working-tree diff for review
+ *   litti install <agent> [--dir <p>]    gate Claude Code / Codex / OpenCode with Litti
  *
  * Settings: LITTI_URL (default http://127.0.0.1:3847), LITTI_API_KEY, LITTI_ADMIN_KEY (review links).
  */
@@ -32,6 +33,8 @@ Usage:
   litti reply <note-id> <text…>       Answer a note as the agent
   litti resolve <note-id>             Close a thread once it's handled
   litti submit [description…]         Send the current working-tree diff for review
+  litti install <claude|codex|opencode|all> [--dir <project>]
+                                      Make risky agent commands need a Litti review
 
 Settings: LITTI_URL (default ${URL_BASE}), LITTI_API_KEY, LITTI_ADMIN_KEY (for review)`;
 
@@ -205,6 +208,23 @@ export async function run(argv: string[]): Promise<void> {
       console.log(`🔒 Tier ${data.tier} — sent for review. Action ${data.id}${data.openNotes ? ` · ${data.openNotes} open note(s)` : ''}`);
       console.log(`   Review: ${data.approvalUrl}`);
       console.log(`   Check:  litti status ${data.id}`);
+      return;
+    }
+
+    case 'install': {
+      const [which] = positionals(args, ['--dir']);
+      const dir = flag(args, '--dir') || process.cwd();
+      const { AGENTS, install } = await import('./integrations/install.js');
+      const list = which === 'all' ? AGENTS : AGENTS.filter(a => a === which);
+      if (!list.length) fail('Usage: litti install <claude|codex|opencode|all> [--dir <project>]');
+      for (const a of list) {
+        const r = install(a, dir);
+        console.log(`✅ ${a}: ${r.file}`);
+        for (const n of r.notes) console.log(`   ${n}`);
+      }
+      console.log('\nRisky commands (commit, push, deploy, publish, migrations, destructive deletes) now need a Litti review.');
+      console.log('The agent is denied at once with a review link; after approval it re-runs the same command.');
+      console.log(`Hook talks to LITTI_URL (now ${URL_BASE}); set LITTI_API_KEY in the agent's environment if your server uses one.`);
       return;
     }
 

@@ -25,6 +25,11 @@ export interface JiraOptions {
   /** Workflow transition to run on approval, matched by name (case-insensitive). */
   doneTransition?: string;
   fetchImpl?: FetchLike;
+  /**
+   * OAuth (Connect button): full REST base, e.g. https://api.atlassian.com/ex/jira/<cloudId>/rest/api/3,
+   * and a function returning a fresh "Bearer …" header. Overrides baseUrl/apiToken/email.
+   */
+  oauth?: { apiBase: string; authHeader: () => Promise<string> };
 }
 
 /** Atlassian Document Format: one paragraph per line, plain text only (no markup injection). */
@@ -54,13 +59,13 @@ export function jiraDescription(card: ActionCard, a: RiskAssessment, url: string
 export function jiraNotifier(opts: JiraOptions): Notifier {
   const fetchImpl = opts.fetchImpl ?? fetch;
   const base = opts.baseUrl.replace(/\/$/, '');
-  const cloud = Boolean(opts.email);
-  const api = `${base}/rest/api/${cloud ? 3 : 2}`;
-  const headers = {
-    authorization: cloud
-      ? `Basic ${Buffer.from(`${opts.email}:${opts.apiToken}`).toString('base64')}`
-      : `Bearer ${opts.apiToken}`,
-  };
+  const cloud = Boolean(opts.email || opts.oauth);
+  const api = opts.oauth ? opts.oauth.apiBase.replace(/\/$/, '') : `${base}/rest/api/${cloud ? 3 : 2}`;
+  const staticAuth = opts.email
+    ? `Basic ${Buffer.from(`${opts.email}:${opts.apiToken}`).toString('base64')}`
+    : `Bearer ${opts.apiToken}`;
+  // Resolved per call so OAuth tokens can refresh.
+  const auth = async () => ({ authorization: opts.oauth ? await opts.oauth.authHeader() : staticAuth });
   const minTier = opts.minTier ?? 2;
   const body = (text: string) => (cloud ? adf(text) : text);
   const inflight = new Map<string, Promise<unknown>>();
@@ -70,14 +75,14 @@ export function jiraNotifier(opts: JiraOptions): Notifier {
     return k && /^[A-Z][A-Z0-9_]+-\d+$/.test(k) ? k : null;
   };
 
-  const comment = (k: string, text: string) => sendJson('Jira', fetchImpl, 'POST', `${api}/issue/${k}/comment`, { body: body(text) }, headers);
+  const comment = async (k: string, text: string) => sendJson('Jira', fetchImpl, 'POST', `${api}/issue/${k}/comment`, { body: body(text) }, await auth());
 
   const transition = async (k: string, name: string) => {
-    const list = await sendJson('Jira', fetchImpl, 'GET', `${api}/issue/${k}/transitions`, undefined, headers);
+    const list = await sendJson('Jira', fetchImpl, 'GET', `${api}/issue/${k}/transitions`, undefined, await auth());
     const t = (list.body?.transitions ?? []).find((x: any) => String(x?.name).toLowerCase() === name.toLowerCase()
       || String(x?.to?.name).toLowerCase() === name.toLowerCase());
     if (!t) { console.error(`⚠️  Jira: no transition named "${oneLine(name, 40)}" on ${k}`); return; }
-    await sendJson('Jira', fetchImpl, 'POST', `${api}/issue/${k}/transitions`, { transition: { id: String(t.id) } }, headers);
+    await sendJson('Jira', fetchImpl, 'POST', `${api}/issue/${k}/transitions`, { transition: { id: String(t.id) } }, await auth());
   };
 
   return {
@@ -92,7 +97,7 @@ export function jiraNotifier(opts: JiraOptions): Notifier {
             description: body(jiraDescription(card, a, approvalUrl)),
             labels: ['litti', `litti-tier-${a.tier}`],
           },
-        }, headers);
+        }, await auth());
         if (r.ok && typeof r.body?.key === 'string') setSetting(key(card.id), r.body.key);
       })();
       inflight.set(card.id, p);

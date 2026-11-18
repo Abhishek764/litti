@@ -114,6 +114,15 @@ Walk through the scenarios: [demo/scenarios.md](demo/scenarios.md).
 
 ---
 
+## Documentation
+
+Full guide with step-by-step lessons for newcomers: run Litti and open **http://127.0.0.1:3847/docs**,
+or read it on GitHub in [docs/guide](docs/guide/index.md): [install](docs/guide/install.md) ·
+[first review](docs/guide/first-review.md) · [gate your agent](docs/guide/connect-agent.md) ·
+[Changes](docs/guide/changes.md) · [Slack, Discord, Jira](docs/guide/connect-team.md) ·
+[how it works](docs/guide/how-it-works.md) · [CLI](docs/guide/cli.md) · [API](docs/guide/api.md) ·
+[configuration](docs/guide/config.md) · [troubleshooting](docs/guide/troubleshooting.md).
+
 ## Connect your coding agent
 
 ### Enforce it with a hook (Claude Code, Codex, OpenCode)

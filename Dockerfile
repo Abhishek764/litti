@@ -10,6 +10,7 @@ RUN npm ci --omit=dev && npm cache clean --force
 COPY src ./src
 COPY public ./public
 COPY demo ./demo
+COPY docs/guide ./docs/guide
 COPY tsconfig.json ./
 
 # Persistent state: receipt chain and deploy records.

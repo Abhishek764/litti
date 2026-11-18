@@ -37,7 +37,7 @@ code,.copy{font-family:var(--mono);font-size:13px}.copy{display:inline-flex;alig
 .warn{color:var(--yellow);font-size:13px;margin-top:8px}
 a{color:var(--blue)}
 </style></head><body>
-<header><a href="/"><img src="/brand/litti-logo.svg" alt="Litti"></a><nav><a href="/">Inbox</a><a href="/changes">Changes</a><a href="/integrations" style="color:var(--text)">Integrations</a><a href="/dashboard.html">Dashboard</a></nav></header>
+<header><a href="/"><img src="/brand/litti-logo.svg" alt="Litti"></a><nav><a href="/">Inbox</a><a href="/changes">Changes</a><a href="/integrations" style="color:var(--text)">Integrations</a><a href="/dashboard.html">Dashboard</a><a href="/docs">Docs</a></nav></header>
 <div class="wrap">
 <h1>Integrations</h1>
 <p class="sub">Connect where your team hears about approvals. Reviewers still approve on the Litti review page, never in chat. Only metadata is sent; your code never leaves this server.</p>

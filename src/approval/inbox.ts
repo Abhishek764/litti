@@ -30,7 +30,7 @@ export function renderInbox(pending: PendingAction[], baseUrl: string): string {
   .empty { padding:40px; text-align:center; color:var(--muted); border:1px dashed var(--border); border-radius:10px }
 </style></head>
 <body><main>
-  <nav style="display:flex;align-items:center;gap:8px"><a href="/" style="margin-right:20px"><img src="/brand/litti-logo.svg" alt="Litti" height="30" style="display:block;height:30px;width:auto"></a><a href="/">Inbox</a><a href="/changes">Changes</a><a href="/integrations">Integrations</a><a href="/dashboard.html">Dashboard</a></nav>
+  <nav style="display:flex;align-items:center;gap:8px"><a href="/" style="margin-right:20px"><img src="/brand/litti-logo.svg" alt="Litti" height="30" style="display:block;height:30px;width:auto"></a><a href="/">Inbox</a><a href="/changes">Changes</a><a href="/integrations">Integrations</a><a href="/dashboard.html">Dashboard</a><a href="/docs">Docs</a></nav>
   <h1 style="margin-top:24px">Waiting for review</h1>
   <p class="sub">Open an action, read the diff, pass the quiz. Nothing runs until enough reviewers pass.</p>
   ${rows || '<div class="empty">✅ Nothing waiting for review.</div>'}

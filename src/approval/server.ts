@@ -16,6 +16,7 @@ import { allowSelfAsserted, elapsedSinceView, issueTicket, issueViewStamp, resol
 import { renderInbox } from './inbox.js';
 import { registerChangesRoutes } from '../changes/routes.js';
 import { registerConnectRoutes } from '../connect/routes.js';
+import { registerDocsRoutes } from '../docs/site.js';
 import { execute } from '../deploy/executor.js';
 import { appendReceipt, attentionScore } from '../chain/receipt.js';
 import { verifyChain } from '../chain/verify.js';
@@ -168,6 +169,9 @@ export function buildServer(opts: { logger?: boolean } = {}): FastifyInstance {
 
   // Integrations page + Connect buttons (Slack, Discord, Jira).
   registerConnectRoutes(app);
+
+  // Documentation site (docs/guide/*.md).
+  registerDocsRoutes(app);
 
   app.get('/healthz', () => ({ ok: true, receipts: allReceipts().length }));
 

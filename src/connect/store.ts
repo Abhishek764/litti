@@ -70,6 +70,8 @@ export interface JiraConn {
   cloudId: string; siteUrl: string; siteName: string;
   accessToken: string; refreshToken?: string; expiresAt: number;
   projectKey?: string; projectName?: string; minTier?: number; doneTransition?: string;
+  /** Set when connected through a Litti Connect service: token refreshes go through it. */
+  broker?: string;
 }
 export type ConnFor<P extends Provider> = P extends 'slack' ? SlackConn : P extends 'discord' ? DiscordConn : JiraConn;
 

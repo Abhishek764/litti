@@ -35,6 +35,10 @@ code,.copy{font-family:var(--mono);font-size:13px}.copy{display:inline-flex;alig
 .facts{font-size:14px;color:var(--muted);margin-top:6px}.facts b{color:var(--text);font-weight:600}
 .msg{font-size:14px;margin-top:8px;min-height:1px}.msg.ok{color:var(--green)}.msg.bad{color:var(--red)}
 .warn{color:var(--yellow);font-size:13px;margin-top:8px}
+.big{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:6px 0 4px}
+.bigbtn{font-size:16px;padding:12px 22px;border-radius:10px}
+details.more{border:0;background:none;margin-top:14px}details.more>summary{color:var(--muted);font-weight:500;font-size:14px;padding:6px 0}
+details.more details{margin-top:10px}
 a{color:var(--blue)}
 </style></head><body>
 <header><a href="/"><img src="/brand/litti-logo.svg" alt="Litti"></a><nav><a href="/">Inbox</a><a href="/changes">Changes</a><a href="/integrations" style="color:var(--text)">Integrations</a><a href="/dashboard.html">Dashboard</a><a href="/docs">Docs</a></nav></header>
@@ -73,8 +77,8 @@ function appForm(p,s,after){
 function connectBtn(p,s){const a=el('a','btn primary','Connect '+META[p].name);a.href='/connect/'+p;if(!s.appReady){a.removeAttribute('href');a.className='btn';a.style.opacity='.5';a.title='Finish the one-time setup first';}return a;}
 
 function slackGuide(s,info){
-  const d=el('details');d.open=!s.appReady;
-  const sm=el('summary','','Connect with the Slack app');sm.append(el('span','tag','recommended · threads and live updates'));d.append(sm);
+  const d=el('details');d.open=false;
+  const sm=el('summary','','Use your own Slack app');sm.append(el('span','tag','advanced'));d.append(sm);
   const st=el('div','steps');const ol=el('ol');
   const manifest={display_information:{name:'Litti'},features:{bot_user:{display_name:'Litti',always_online:true}},oauth_config:{redirect_urls:[info.redirectUris.slack],scopes:{bot:['chat:write','incoming-webhook']}},settings:{org_deploy_enabled:false,socket_mode_enabled:false,token_rotation_enabled:false}};
   const create='https://api.slack.com/apps?new_app=1&manifest_json='+encodeURIComponent(JSON.stringify(manifest));
@@ -90,7 +94,7 @@ function slackGuide(s,info){
 }
 function discordGuide(s,info){
   const d=el('details');d.open=false;
-  const sm=el('summary','','Connect with Discord sign-in');sm.append(el('span','tag','pick server and channel on Discord'));d.append(sm);
+  const sm=el('summary','','Use your own Discord app');sm.append(el('span','tag','advanced'));d.append(sm);
   const st=el('div','steps');const ol=el('ol');
   ol.append(
     li(['Open the ',link('https://discord.com/developers/applications','Discord Developer Portal ↗'),' → New Application → name it Litti.']),
@@ -100,8 +104,8 @@ function discordGuide(s,info){
   st.append(ol,appForm('discord',s));const r=el('div','row');r.append(connectBtn('discord',s));st.append(r);d.append(st);return d;
 }
 function jiraGuide(s,info){
-  const d=el('details');d.open=!s.appReady;
-  const sm=el('summary','','One-time setup');sm.append(el('span','tag','about 2 minutes, done once'));d.append(sm);
+  const d=el('details');d.open=false;
+  const sm=el('summary','','Use your own Atlassian app');sm.append(el('span','tag','advanced'));d.append(sm);
   const st=el('div','steps');const ol=el('ol');
   ol.append(
     li(['Open the ',link('https://developer.atlassian.com/console/myapps/','Atlassian developer console ↗'),' → Create → OAuth 2.0 integration → name it Litti → agree → Create.']),
@@ -151,25 +155,39 @@ function card(p,s,info){
     if(p==='jira'&&!d.projectKey)c.append(el('div','warn','Pick a project and Save to start creating issues.'));
     return c;
   }
+  // One button. The provider asks you to pick the workspace/channel/project, then you're back here.
+  const big=el('div','big');
+  if(s.oneClick){
+    const a=el('a','btn primary bigbtn','Connect '+meta.name);a.href='/connect/'+p;
+    big.append(a,el('span','facts',{slack:'Pick your workspace and channel on Slack, click Allow. Done.',discord:'Pick your server and channel on Discord, click Authorize. Done.',jira:'Sign in to Atlassian, pick your site, click Accept. Done.'}[p]));
+  }else{
+    const b=el('button','bigbtn','Connect '+meta.name);b.disabled=true;
+    big.append(b,el('span','facts','One-click connect isn’t switched on for this Litti. Use “Other ways to connect” below.'));
+  }
+  c.append(big);
+  const more=el('details','more');more.append(el('summary','','Other ways to connect'));
+  const inner=el('div','');more.append(inner);
   if(p==='slack'){
-    c.append(slackGuide(s,info));
-    c.append(quick('slack','Or: paste a Slack webhook link',[
+    inner.append(quick('slack','Paste a Slack webhook link',[
       ['Go to ',link('https://api.slack.com/apps?new_app=1','Slack apps ↗'),' → Create New App → From scratch → name it Litti, pick your workspace.'],
       ['Incoming Webhooks → switch On → Add New Webhook to Workspace → pick the channel → Allow.'],
       ['Copy the Webhook URL and paste it here.'],
     ],'https://hooks.slack.com/services/...'));
+    inner.append(slackGuide(s,info));
   }
   if(p==='discord'){
-    c.append(quick('discord','Paste a Discord webhook link',[
+    inner.append(quick('discord','Paste a Discord webhook link',[
       ['In Discord, open the channel’s settings (gear icon) → Integrations → Webhooks → New Webhook.'],
       ['Click the webhook, then Copy Webhook URL, and paste it here.'],
     ],'https://discord.com/api/webhooks/...'));
-    c.append(discordGuide(s,info));
+    inner.append(discordGuide(s,info));
   }
   if(p==='jira'){
-    c.append(jiraGuide(s,info));
-    const r=el('div','row');r.append(connectBtn('jira',s),el('span','facts','You’ll sign in to Atlassian and pick your site.'));c.append(r);
+    inner.append(jiraGuide(s,info));
+    const r=el('div','row');r.append(connectBtn('jira',s),el('span','facts','Uses your own Atlassian app.'));inner.append(r);
   }
+  if(!s.oneClick)more.open=true;
+  c.append(more);
   return c;
 }
 

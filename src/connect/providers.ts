@@ -34,8 +34,8 @@ async function json(url: string, init: RequestInit): Promise<{ ok: boolean; stat
 const form = (o: Record<string, string>) => ({ method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' }, body: new URLSearchParams(o).toString() });
 
 /** Turn the provider's `code` into a stored connection. Throws a user-readable Error on failure. */
-export async function exchange(p: Provider, code: string, redirectUri: string): Promise<SlackConn | DiscordConn | JiraConn> {
-  const app = getAppCreds(p);
+export async function exchange(p: Provider, code: string, redirectUri: string, appCreds?: AppCreds | null): Promise<SlackConn | DiscordConn | JiraConn> {
+  const app = appCreds ?? getAppCreds(p);
   if (!app) throw new Error('This integration is not set up yet.');
 
   if (p === 'slack') {
@@ -70,17 +70,31 @@ export async function exchange(p: Provider, code: string, redirectUri: string): 
   };
 }
 
+/** Exchange a Jira refresh token for new tokens with the given app (Atlassian rotates refresh tokens). */
+export function refreshJira(app: AppCreds, refreshToken: string) {
+  return json('https://auth.atlassian.com/oauth/token', {
+    method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify({ grant_type: 'refresh_token', client_id: app.clientId, client_secret: app.clientSecret, refresh_token: refreshToken }),
+  });
+}
+
 /** A valid Jira bearer header, refreshing the token when it is about to expire. */
 export async function jiraAuthHeader(): Promise<string> {
   const c = getConnection('jira');
   if (!c) throw new Error('Jira is not connected');
   if (c.expiresAt - Date.now() > 60_000 || !c.refreshToken) return `Bearer ${c.accessToken}`;
-  const app = getAppCreds('jira');
-  if (!app) return `Bearer ${c.accessToken}`;
-  const r = await json('https://auth.atlassian.com/oauth/token', {
-    method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json' },
-    body: JSON.stringify({ grant_type: 'refresh_token', client_id: app.clientId, client_secret: app.clientSecret, refresh_token: c.refreshToken }),
-  });
+  let r: { ok: boolean; status: number; body: any };
+  if (c.broker) {
+    // Connected through Litti Connect: only the connect service holds the app secret.
+    r = await json(`${c.broker.replace(/\/$/, '')}/refresh/jira`, {
+      method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify({ refreshToken: c.refreshToken }),
+    });
+  } else {
+    const app = getAppCreds('jira');
+    if (!app) return `Bearer ${c.accessToken}`;
+    r = await refreshJira(app, c.refreshToken);
+  }
   if (!r.ok || !r.body?.access_token) {
     console.error(`⚠️  Jira token refresh failed (HTTP ${r.status}). Reconnect Jira on the Integrations page.`);
     return `Bearer ${c.accessToken}`;

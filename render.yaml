@@ -1,0 +1,32 @@
+# Litti Connect: the hosted service behind the one-click Connect buttons.
+# Deploy: Render dashboard → New → Blueprint → pick this repo. Then fill in the env vars marked sync:false.
+# Guide: docs/connect-service.md
+services:
+  - type: web
+    name: litti-connect
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: node dist/broker/server.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: LITTI_BROKER_SECRET
+        generateValue: true
+      - key: LITTI_BROKER_URL
+        sync: false
+      - key: LITTI_BROKER_ALLOWED_RETURNS
+        sync: false
+      - key: SLACK_CLIENT_ID
+        sync: false
+      - key: SLACK_CLIENT_SECRET
+        sync: false
+      - key: DISCORD_CLIENT_ID
+        sync: false
+      - key: DISCORD_CLIENT_SECRET
+        sync: false
+      - key: ATLASSIAN_CLIENT_ID
+        sync: false
+      - key: ATLASSIAN_CLIENT_SECRET
+        sync: false

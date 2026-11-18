@@ -46,6 +46,48 @@ export function baseUrl(req: { protocol: string; headers: Headers }): string {
 }
 export const redirectUri = (base: string, p: Provider) => `${base}/connect/${p}/callback`;
 
+/**
+ * Litti Connect service used by the one-click buttons. LITTI_CONNECT_BROKER overrides the
+ * default; set it to "off" to disable. Only https (or loopback, for local testing).
+ */
+export const DEFAULT_BROKER = '';
+export function brokerUrl(env = process.env): string | null {
+  const raw = (env.LITTI_CONNECT_BROKER ?? DEFAULT_BROKER).trim();
+  if (!raw || raw === 'off') return null;
+  try {
+    const u = new URL(raw);
+    const loop = ['127.0.0.1', 'localhost'].includes(u.hostname);
+    if (u.protocol === 'https:' || (u.protocol === 'http:' && loop)) return u.origin + u.pathname.replace(/\/$/, '');
+  } catch { /* invalid */ }
+  return null;
+}
+
+/**
+ * Check what Litti Connect sent back. Only known fields are kept, and the broker URL saved
+ * with a Jira connection comes from our own config, never from the incoming data.
+ */
+export function validateBrokerConn(p: Provider, c: any): Record<string, unknown> | null {
+  if (!c || typeof c !== 'object') return null;
+  const s = (v: unknown, max = 500) => (typeof v === 'string' && v.length <= max ? v : undefined);
+  if (p === 'slack') {
+    const token = s(c.token, 300), channelId = s(c.channelId, 40);
+    if (!token?.startsWith('xox') || !channelId || !/^[A-Z0-9]+$/.test(channelId)) return null;
+    return { kind: 'oauth', token, channelId, channelName: s(c.channelName, 100), team: s(c.team, 100) };
+  }
+  if (p === 'discord') {
+    const url = s(c.webhookUrl);
+    if (!url || !isDiscordWebhook(url)) return null;
+    return { webhookUrl: url, channelId: s(c.channelId, 40), guildName: s(c.guildName, 100), via: 'oauth' };
+  }
+  const cloudId = s(c.cloudId, 100), siteUrl = s(c.siteUrl, 300), accessToken = s(c.accessToken, 5000);
+  if (!cloudId || !accessToken || !siteUrl?.startsWith('https://')) return null;
+  return {
+    cloudId, siteUrl, siteName: s(c.siteName, 200) ?? siteUrl, accessToken,
+    refreshToken: s(c.refreshToken, 5000), expiresAt: Number(c.expiresAt) || Date.now() + 3600_000,
+    broker: brokerUrl() ?? undefined,
+  };
+}
+
 /** Public view of a connection: what the page shows. No tokens, no webhook URLs. */
 function status(p: Provider) {
   const app = getAppCreds(p);
@@ -57,7 +99,7 @@ function status(p: Provider) {
     if (p === 'jira') details = { site: c.siteName, siteUrl: c.siteUrl, projectKey: c.projectKey ?? null, projectName: c.projectName ?? null, minTier: c.minTier ?? 2, doneTransition: c.doneTransition ?? '' };
     details = { ...details, connectedAt: c.connectedAt, connectedBy: c.connectedBy };
   }
-  return { appReady: Boolean(app), appSource: app?.source ?? null, clientId: app?.clientId ?? null, connected: Boolean(c), details };
+  return { appReady: Boolean(app), appSource: app?.source ?? null, clientId: app?.clientId ?? null, oneClick: Boolean(app || brokerUrl()), connected: Boolean(c), details };
 }
 
 export function registerConnectRoutes(app: FastifyInstance): void {
@@ -108,8 +150,33 @@ export function registerConnectRoutes(app: FastifyInstance): void {
     const p = req.params.p;
     if (!a.ok || !isProvider(p)) return reply.redirect('/integrations?error=' + encodeURIComponent(a.ok ? 'Unknown integration.' : a.why));
     const creds = getAppCreds(p);
-    if (!creds) return reply.redirect(`/integrations?error=${encodeURIComponent(`Finish the one-time ${NAMES[p]} setup first.`)}`);
-    return reply.redirect(authorizeUrl(p, creds, redirectUri(baseUrl(req), p), issueState(p)));
+    // Your own registered app wins; otherwise go through Litti Connect (one button, no setup).
+    if (creds) return reply.redirect(authorizeUrl(p, creds, redirectUri(baseUrl(req), p), issueState(p)));
+    const broker = brokerUrl();
+    if (!broker) return reply.redirect(`/integrations?error=${encodeURIComponent(`One-click connect isn't available on this Litti. Use "Other ways to connect" under ${NAMES[p]}.`)}`);
+    const q = new URLSearchParams({ state: issueState(p), return: `${baseUrl(req)}/connect/${p}/done` });
+    return reply.redirect(`${broker}/start/${p}?${q}`);
+  });
+
+  // Litti Connect posts the result back here (a form POST keeps tokens out of URLs and history).
+  // The signed, single-use state proves this browser started the flow on this Litti.
+  app.register(async scope => {
+    scope.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string', bodyLimit: 64 * 1024 },
+      (_req, body, done) => done(null, Object.fromEntries(new URLSearchParams(String(body)))));
+    scope.post<{ Params: { p: string }; Body: Record<string, string> }>('/connect/:p/done', (req, reply) => {
+      const p = req.params.p;
+      const back = (q: string) => reply.redirect(`/integrations?${q}`, 303);
+      const a = adminIdentity(req.headers);
+      if (!a.ok) return back(`error=${encodeURIComponent(a.why)}`);
+      if (!isProvider(p) || !consumeState(p, req.body?.state)) return back(`error=${encodeURIComponent('That connect link expired or was not started here. Click Connect again.')}`);
+      if (req.body?.error) return back(`error=${encodeURIComponent(String(req.body.error).slice(0, 200))}`);
+      let conn: any;
+      try { conn = JSON.parse(String(req.body?.conn ?? '')); } catch { conn = null; }
+      const checked = validateBrokerConn(p, conn);
+      if (!checked) return back(`error=${encodeURIComponent(`${NAMES[p]} sent back something unexpected. Try again.`)}`);
+      saveConnection(p, checked as any, a.name);
+      return back(`connected=${p}`);
+    });
   });
 
   app.get<{ Params: { p: string }; Querystring: { code?: string; state?: string; error?: string; error_description?: string } }>('/connect/:p/callback', async (req, reply) => {

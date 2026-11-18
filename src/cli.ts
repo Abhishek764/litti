@@ -216,7 +216,15 @@ export async function run(argv: string[]): Promise<void> {
       const dir = flag(args, '--dir') || process.cwd();
       const { AGENTS, install } = await import('./integrations/install.js');
       const list = which === 'all' ? AGENTS : AGENTS.filter(a => a === which);
-      if (!list.length) fail('Usage: litti install <claude|codex|opencode|all> [--dir <project>]');
+      if (!list.length) fail('Usage: litti install <claude|codex|opencode|all> [--dir <project>] [--global]');
+      // In the home folder, .claude/settings.json is the user-wide config: every project gets gated.
+      const { homedir } = await import('node:os');
+      const { resolve } = await import('node:path');
+      if (resolve(dir).toLowerCase() === resolve(homedir()).toLowerCase() && !args.includes('--global')) {
+        fail(`You're in your home folder (${homedir()}). Installing here gates EVERY project on this computer.\n` +
+          '   Go to a project first:   cd path\\to\\your-project   then   litti install claude\n' +
+          '   Or, if you really want every project gated:   litti install claude --global');
+      }
       for (const a of list) {
         const r = install(a, dir);
         console.log(`✅ ${a}: ${r.file}`);

@@ -8,7 +8,7 @@
     "demo": "tsx src/demo.ts",
     "litti": "tsx src/cli.ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsc --noEmit && tsx test/smoke.ts && tsx test/production.ts && tsx test/cli.ts && tsx test/notify.ts && tsx test/challenges.ts"
+    "test": "tsc --noEmit && tsx test/smoke.ts && tsx test/production.ts && tsx test/cli.ts && tsx test/notify.ts && tsx test/challenges.ts && tsx test/changes.ts"
   },
   "dependencies": {
     "@fastify/formbody": "^8.0.1",

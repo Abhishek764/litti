@@ -14,6 +14,7 @@ import { renderApprovalPage } from './page.js';
 import { createToken, validateToken } from './token.js';
 import { allowSelfAsserted, elapsedSinceView, issueTicket, issueViewStamp, resolveReviewer, verifyTicket } from './identity.js';
 import { renderInbox } from './inbox.js';
+import { registerChangesRoutes } from '../changes/routes.js';
 import { execute } from '../deploy/executor.js';
 import { appendReceipt, attentionScore } from '../chain/receipt.js';
 import { verifyChain } from '../chain/verify.js';
@@ -150,6 +151,19 @@ export function buildServer(opts: { logger?: boolean } = {}): FastifyInstance {
   });
 
   app.register(fastifyStatic, { root: join(__dirname, '..', '..', 'public'), prefix: '/' });
+
+  // Changes workspace: live working-tree diff, line notes with the agent, one-click review.
+  registerChangesRoutes(app, {
+    apiKeyOk,
+    reviewerAllowed: inboxAllowed,
+    reviewerName: (headers) => {
+      const h = process.env.LITTI_IDENTITY_HEADER?.toLowerCase();
+      const v = h ? headers[h] : undefined;
+      return typeof v === 'string' && v.trim() ? v.trim().slice(0, 64) : null;
+    },
+    baseUrlFor,
+    registerPending,
+  });
 
   app.get('/healthz', () => ({ ok: true, receipts: allReceipts().length }));
 

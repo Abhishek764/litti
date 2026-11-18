@@ -7,6 +7,10 @@
  *   litti pending                        actions waiting for reviewers
  *   litti verify                         check the receipt chain for tampering
  *   litti stats                          reviewer attention scores
+ *   litti notes [--all]                  reviewer notes on the working-tree diff (for the agent)
+ *   litti reply <note-id> <text…>        answer a note as the agent
+ *   litti resolve <note-id>              close a thread once handled
+ *   litti submit [description…]          send the current working-tree diff for review
  *
  * Settings: LITTI_URL (default http://127.0.0.1:3847), LITTI_API_KEY, LITTI_ADMIN_KEY (review links).
  */
@@ -24,11 +28,16 @@ Usage:
   litti pending                       List actions waiting for reviewers
   litti verify                        Check the receipt chain for tampering
   litti stats                         Reviewer attention scores and rubber-stamps
+  litti notes [--all]                 Reviewer notes on the working-tree diff (open only by default)
+  litti reply <note-id> <text…>       Answer a note as the agent
+  litti resolve <note-id>             Close a thread once it's handled
+  litti submit [description…]         Send the current working-tree diff for review
 
 Settings: LITTI_URL (default ${URL_BASE}), LITTI_API_KEY, LITTI_ADMIN_KEY (for review)`;
 
 async function api<T = any>(method: string, path: string, body?: unknown): Promise<{ status: number; data: T }> {
-  const headers: Record<string, string> = {};
+  // x-litti-agent marks CLI calls as the agent on the Changes API when no API key is configured.
+  const headers: Record<string, string> = { 'x-litti-agent': '1' };
   if (process.env.LITTI_API_KEY) headers['x-litti-key'] = process.env.LITTI_API_KEY;
   if (process.env.LITTI_ADMIN_KEY) headers['x-litti-admin-key'] = process.env.LITTI_ADMIN_KEY;
   if (body !== undefined) headers['content-type'] = 'application/json';
@@ -152,6 +161,50 @@ export async function run(argv: string[]): Promise<void> {
       if (!data.length) { console.log('📭 No reviews yet.'); return; }
       console.log('📊 Reviewer attention');
       for (const s of data) console.log(`  • ${s.approver}: avg attention ${s.avgAttention}/100 · rubber-stamps ${s.rubberStampCount} · approval rate ${s.approvalRate}%`);
+      return;
+    }
+
+    case 'notes': {
+      const { status, data } = await api('GET', `/api/notes${args.includes('--all') ? '' : '?status=open'}`);
+      if (status >= 400) fail(data.message || `HTTP ${status}`);
+      const threads: any[] = Array.isArray(data.threads) ? data.threads : [];
+      if (!threads.length) { console.log('✅ No open review notes.'); return; }
+      for (const t of threads) {
+        const where = t.line === 0 ? t.file : `${t.file}:${t.line < 0 ? `-${-t.line} (removed line)` : t.line}`;
+        console.log(`\n💬 ${t.id} · ${where} · ${t.status}`);
+        if (t.snippet) console.log(`   > ${t.snippet}`);
+        for (const m of [t, ...t.replies]) console.log(`   ${m.role === 'agent' ? '🤖' : '🧑'} ${m.author}: ${String(m.body).replace(/\n/g, '\n      ')}`);
+      }
+      console.log('\nReply: litti reply <note-id> "what you did"   ·   Close: litti resolve <note-id>');
+      return;
+    }
+
+    case 'reply': {
+      const [id, ...words] = args;
+      const body = words.join(' ').trim();
+      if (!id || !body) fail('Usage: litti reply <note-id> <text…>');
+      const { status, data } = await api('POST', '/api/notes', { parentId: id, body, author: process.env.LITTI_AGENT_NAME || undefined });
+      if (status >= 400) fail(data.message || `HTTP ${status}`);
+      console.log(`✅ Replied on ${id}.`);
+      return;
+    }
+
+    case 'resolve': {
+      const id = args[0];
+      if (!id) fail('Usage: litti resolve <note-id>');
+      const { status, data } = await api('POST', `/api/notes/${encodeURIComponent(id)}/resolve`, {});
+      if (status >= 400) fail(data.message || `HTTP ${status}`);
+      console.log(`✅ Resolved ${id}.`);
+      return;
+    }
+
+    case 'submit': {
+      const description = args.join(' ').trim();
+      const { status, data } = await api('POST', '/api/changes/review', description ? { description } : {});
+      if (status >= 400) fail(data.message || `HTTP ${status}`);
+      console.log(`🔒 Tier ${data.tier} — sent for review. Action ${data.id}${data.openNotes ? ` · ${data.openNotes} open note(s)` : ''}`);
+      console.log(`   Review: ${data.approvalUrl}`);
+      console.log(`   Check:  litti status ${data.id}`);
       return;
     }
 

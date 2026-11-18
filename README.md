@@ -163,6 +163,23 @@ In production each reviewer needs a verified identity, strongest first:
    ```
 3. **Typed name**: demo only (`LITTI_ALLOW_SELF_ASSERTED=true`).
 
+## Changes: see what the agent changed, talk it through
+
+Open **`/changes`** while your agent works. It shows the live working-tree diff of `LITTI_REPO_PATH`
+(edits, deletions and new files against `HEAD`), refreshed every few seconds.
+
+- **Comment on any line** (or a whole file) to ask the agent why, or tell it what to change.
+- **The agent answers in the same thread.** It reads open notes and replies from the CLI:
+  ```bash
+  npm run litti -- notes                      # open notes, with file:line and the code they're on
+  npm run litti -- reply note_ab12 "Reverted, callers already pass cents."
+  npm run litti -- resolve note_ab12
+  ```
+- **Request review** (button, or `litti submit "what this does"`) turns the whole diff into a Litti action:
+  tiered, with a comprehension check, receipts and notifications as usual. Open notes are flagged in the description.
+
+Agents authenticate with `x-litti-key`; reviewers are allowed in the same way as the inbox (locally, or behind your SSO proxy).
+
 ## Team notifications
 
 Litti posts approval cards, countersign progress, rubber-stamp warnings and deploy results to your team.
@@ -204,6 +221,8 @@ or `npm start` on any Node 20.10+ host. `npm start` validates the config and ref
 | `LITTI_WEBHOOK_SECRET` | Deploy webhook signing key (defaults to `SECRET_KEY`). |
 | `LITTI_DB_PATH` | SQLite file (default `data/litti.db`). |
 | `LITTI_DEPLOY_DIR` | Where deploy records are written when no deploy webhook is set (default `deployments`). |
+| `LITTI_REPO_PATH` | Git repository the Changes view watches (default: the server's working directory). |
+| `LITTI_AGENT_NAME` | Name shown for agent replies and on actions sent from Changes (default `agent`). |
 | `LITTI_CHALLENGES` | Comma list of allowed check kinds (`quiz,spot-line,type-in,canary,count,explain`). Default: all. |
 | `LITTI_ALLOW_SELF_ASSERTED` | `true` lets reviewers type a name. Demo only. Leave unset in production. |
 | `LITTI_URL` | CLI only: where the `litti` command finds the server (default `http://127.0.0.1:3847`). |

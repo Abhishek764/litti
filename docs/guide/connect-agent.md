@@ -4,21 +4,19 @@ Now make a real agent ask before it does anything risky. Litti installs a small 
 
 ## 1. Keep Litti running
 
-In one terminal, in the Litti folder:
+In one terminal:
 
 ```bash
-npm start
+litti
 ```
 
 ## 2. Install the hook into your project
 
-Still in the Litti folder, point `--dir` at the project your agent works in:
+In a second terminal, go to the project your agent works in and install the hook (or pass `--dir <project>` from anywhere):
 
 ```bash
-npm run litti -- install claude   --dir ~/code/my-app
-npm run litti -- install codex    --dir ~/code/my-app
-npm run litti -- install opencode --dir ~/code/my-app
-npm run litti -- install all      --dir ~/code/my-app
+cd ~/code/my-app
+litti install claude      # or: codex, opencode, all
 ```
 
 | Agent | What gets written |

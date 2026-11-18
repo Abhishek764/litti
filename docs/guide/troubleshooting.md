@@ -4,7 +4,7 @@
 
 **`npm install` fails building `better-sqlite3`.** Use Node 20.10 or newer. On Windows, install the Visual Studio Build Tools with "Desktop development with C++". On Linux, install `build-essential` and `python3`.
 
-**`npm start` refuses to start: "SECRET_KEY must be at least 32 random characters".** Generate one and put it in `.env`:
+**Litti refuses to start: "SECRET_KEY must be at least 32 random characters".** `litti` creates one on first run in `~/.litti/config.env`; if you edited it, put back a long random value:
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
@@ -24,7 +24,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 ## Agent hooks
 
-**The agent says "Litti server is unreachable".** Start Litti (`npm start`), or set `LITTI_URL` where the agent runs.
+**The agent says "Litti server is unreachable".** Start Litti (`litti`), or set `LITTI_URL` where the agent runs.
 
 **Nothing is being blocked.**
 - Restart the agent after `litti install`.

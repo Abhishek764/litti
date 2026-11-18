@@ -4,7 +4,7 @@ The **Changes** view shows what your agent has changed in the working tree, live
 
 ## 1. Point Litti at your project
 
-Changes reads a git repository. By default that's the folder Litti runs in. To watch another project, set it in Litti's `.env` and restart:
+Changes reads a git repository: the folder you started `litti` in. Simplest: start Litti from your project folder. Or set it in `~/.litti/config.env` and restart:
 
 ```bash
 LITTI_REPO_PATH=/home/you/code/my-app
@@ -30,7 +30,7 @@ Use **💬 File note** for a comment about the whole file.
 Your agent reads open notes and answers them from the command line:
 
 ```bash
-npm run litti -- notes
+litti notes
 ```
 
 ```
@@ -40,8 +40,8 @@ npm run litti -- notes
 ```
 
 ```bash
-npm run litti -- reply note_3f9a1c "Good catch, reverted to return amount."
-npm run litti -- resolve note_3f9a1c
+litti reply note_3f9a1c "Good catch, reverted to return amount."
+litti resolve note_3f9a1c
 ```
 
 The reply appears in the thread on the page. A new reply from you reopens a resolved thread.
@@ -50,7 +50,7 @@ Tell the agent to check notes. The rules in [agent instructions](https://github.
 
 ## 5. Send it for review
 
-When you're happy, click **Request review**. The agent can also run `npm run litti -- submit "what this does"`. The whole working-tree diff becomes a Litti review, with a tier, a comprehension check and a receipt. If any notes are still open, the review says so.
+When you're happy, click **Request review**. The agent can also run `litti submit "what this does"`. The whole working-tree diff becomes a Litti review, with a tier, a comprehension check and a receipt. If any notes are still open, the review says so.
 
 ## Who can do what
 

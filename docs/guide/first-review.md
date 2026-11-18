@@ -5,7 +5,7 @@ In this lesson you review three changes the way your team will: one easy, one ri
 ## 1. Start the demo
 
 ```bash
-npm run demo
+litti demo
 ```
 
 Your browser opens the first review page and the dashboard. Go to the **review inbox** at `http://127.0.0.1:3847/`. It lists three actions waiting for review, each with a coloured tier:
@@ -45,7 +45,7 @@ Litti blocks it, announces "rubber-stamp blocked", resets every review on that a
 Open the **Dashboard** from the top menu. You'll see each reviewer's attention score and every receipt. In another terminal:
 
 ```bash
-npm run litti -- verify
+litti verify
 ```
 
 `✅ Receipt chain intact` means nobody has edited the history. On the dashboard, **Break chain** (demo only) edits one receipt; run `verify` again and it points at the broken link.

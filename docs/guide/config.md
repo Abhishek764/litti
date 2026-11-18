@@ -1,6 +1,6 @@
 # Configuration
 
-Litti reads settings from environment variables, usually from the `.env` file in the Litti folder. Copy `.env.example` to start. Restart Litti after changing them.
+Litti reads settings from environment variables and from `~/.litti/config.env` (created on first run). Environment variables win. Restart `litti` after changing them. Running from source? Use a `.env` file in the repo instead (copy `.env.example`).
 
 ## Core
 

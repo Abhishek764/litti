@@ -1,62 +1,73 @@
 # Install Litti
 
-Litti runs on your machine or a server as one Node.js process. Installing takes about two minutes.
+Litti runs on your machine (or a server) as one command. Installing takes about a minute.
 
 ## What you need
 
-- **Node.js 20.10 or newer.** Check with `node --version`. Get it from [nodejs.org](https://nodejs.org) if you don't have it.
-- **Git**, to download Litti and for the Changes view.
+- **Node.js 20.10 or newer.** Check with `node --version`. Get it from [nodejs.org](https://nodejs.org).
+- **Git**, for the Changes view and agent hooks.
 - Windows, macOS or Linux.
 
-## Download and install
+## Install
 
 ```bash
-git clone https://github.com/Abhishek764/litti.git
-cd litti
-npm install
+npm install -g litti
 ```
 
-`npm install` builds the SQLite driver. If it fails on Windows, install the "Desktop development with C++" workload from the Visual Studio Build Tools and run it again.
-
-## Check it works
-
-Run the demo. It starts Litti with three sample actions and opens your browser:
+## Start it
 
 ```bash
-npm run demo
+litti
 ```
 
-You should see the review page at `http://127.0.0.1:3847`. Press `Ctrl+C` to stop.
+That's it. Your browser opens Litti's inbox, which shows a **Get started** guide. Keep this terminal open while you work; stop with `Ctrl+C`.
 
-## Set up your own copy
+On the first run Litti creates a folder in your home directory:
 
-The demo is throwaway. For real use, create a settings file:
+| File | What it is |
+|---|---|
+| `~/.litti/config.env` | Settings, with a fresh random `SECRET_KEY` already filled in |
+| `~/.litti/litti.db` | Reviews, receipts and connected integrations |
+| `~/.litti/deployments/` | Records of approved actions (when no deploy webhook is set) |
+
+On Windows, `~` is `C:\Users\<you>`. Edit `config.env` and restart `litti` to change settings. See [Configuration](config) for every option.
+
+## Useful variations
 
 ```bash
-cp .env.example .env
+litti --no-open          # don't open the browser
+litti start --port 4000  # another port
+litti demo               # sample reviews to try, fresh each run
+litti --version
 ```
 
-Open `.env` and set **one** value: a long random `SECRET_KEY`. Generate one with:
+## Try without installing
 
 ```bash
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+npx litti
 ```
 
-Then start Litti:
+For agent hooks, prefer the global install: hooks point at Litti's install folder, and `npx` may clean its cache.
 
-```bash
-npm start
-```
-
-`npm start` checks your settings and refuses to start with a weak key. Leave it running in its own terminal while you work.
-
-## Run it with Docker (optional)
+## Run it with Docker
 
 ```bash
 docker compose up -d
 ```
 
-This uses your `.env`, keeps data in a Docker volume, and restarts Litti if it stops.
+Uses the `.env` next to `docker-compose.yml` and keeps data in a Docker volume.
+
+## From source (contributors)
+
+```bash
+git clone https://github.com/Abhishek764/litti.git
+cd litti
+npm install
+npm run demo        # or: npm start (runs the source with tsx)
+npm test
+```
+
+If `npm install` fails building the SQLite driver on Windows, install the Visual Studio Build Tools with "Desktop development with C++".
 
 ## Next
 

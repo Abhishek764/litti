@@ -1,8 +1,8 @@
 # CLI reference
 
-The `litti` command talks to a running Litti server. From the Litti folder, run it as `npm run litti -- <command>`.
+Run `litti` with no command to start the server. Every other command talks to a running Litti server, from any folder.
 
-It finds the server through `LITTI_URL` (default `http://127.0.0.1:3847`) and sends `LITTI_API_KEY` / `LITTI_ADMIN_KEY` from your environment or `.env`.
+It finds the server through `LITTI_URL` (default `http://127.0.0.1:3847`) and sends `LITTI_API_KEY` / `LITTI_ADMIN_KEY` from your environment or `~/.litti/config.env`.
 
 ## Review flow
 
@@ -15,7 +15,7 @@ It finds the server through `LITTI_URL` (default `http://127.0.0.1:3847`) and se
 
 ```bash
 echo '{"action":"migrate","description":"Add index","diff":"+CREATE INDEX i ON users(email);","touchedPaths":["migrations/9.sql"]}' \
-  | npm run litti -- propose -
+  | litti propose -
 ```
 
 ## Changes and notes

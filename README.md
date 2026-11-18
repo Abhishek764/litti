@@ -90,24 +90,26 @@ sequenceDiagram
 **Requirements:** Node.js 20.10+.
 
 ```bash
-git clone https://github.com/Abhishek764/litti.git
-cd litti
-npm install
-npm run demo
+npm install -g litti
+litti                      # starts Litti and opens it in your browser
 ```
 
-The demo starts Litti with a fresh database and three sample actions (a CSS tweak, a database
-migration, a destructive cleanup). Your browser opens the first review page and the dashboard.
-
-- **Review inbox:** http://127.0.0.1:3847/
-- **Dashboard:** http://127.0.0.1:3847/dashboard.html
-
-Try it: read the diff, pass the comprehension check, countersign. Then answer wrong or too fast on the Tier 3
-action and watch the rubber-stamp detector block it. In another terminal:
+Then, in your project folder:
 
 ```bash
-npm run litti -- pending
-npm run litti -- verify
+litti install claude       # or codex, opencode, all — then restart the agent
+```
+
+Your agent now gets a review link instead of running risky commands. Connect Slack, Discord or Jira from
+**http://127.0.0.1:3847/integrations**. Settings and data live in `~/.litti/`.
+
+**Just want to look around?** `litti demo` starts Litti with three sample actions (a CSS tweak, a database
+migration, a destructive cleanup). Read the diff, pass the comprehension check, countersign. Then answer
+wrong or too fast on the Tier 3 action and watch the rubber-stamp detector block it. In another terminal:
+
+```bash
+litti pending
+litti verify
 ```
 
 Walk through the scenarios: [demo/scenarios.md](demo/scenarios.md).

@@ -9,7 +9,7 @@ cp .env.example .env
 docker compose up -d
 ```
 
-Or `npm start` on any machine with Node 20.10+. Data lives in `LITTI_DB_PATH` (default `data/litti.db`). Back that file up.
+Or `npm install -g litti && litti --no-open` on any machine with Node 20.10+. Data lives in `LITTI_DB_PATH` (`~/.litti/litti.db` for the `litti` command, `/data/litti.db` in Docker). Back that file up.
 
 ## 2. Set the secrets
 
@@ -54,7 +54,8 @@ Point `LITTI_DEPLOY_WEBHOOK` at your CI/CD. Litti POSTs each approved action wit
 On each developer's machine:
 
 ```bash
-npm run litti -- install all --dir path/to/project
+npm install -g litti
+litti install all --dir path/to/project
 export LITTI_URL=https://litti.yourco.com
 export LITTI_API_KEY=…   # the agent key, not the admin key
 ```
@@ -62,8 +63,8 @@ export LITTI_API_KEY=…   # the agent key, not the admin key
 ## 7. Check it
 
 ```bash
-npm run litti -- pending
-npm run litti -- verify
+litti pending
+litti verify
 ```
 
 Then do a test review end to end, from agent to Slack to review page to deploy.

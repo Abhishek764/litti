@@ -49,7 +49,7 @@ The first receipt's `previousHash` is 64 zeros. Each receipt includes the hash o
 Check the whole chain:
 
 ```bash
-npm run litti -- verify
+litti verify
 ```
 
 ```

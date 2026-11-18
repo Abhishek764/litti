@@ -41,7 +41,8 @@ try {
     assert.ok(checkProductionConfig({ SECRET_KEY: 'change-me-to-a-long-random-string' }).errors.length > 0);
     const ok = checkProductionConfig({ SECRET_KEY: 'x'.repeat(40) });
     assert.equal(ok.errors.length, 0);
-    assert.ok(ok.warnings.some(w => w.includes('LITTI_API_KEY')));
+    assert.ok(!ok.warnings.some(w => w.includes('LITTI_API_KEY')), 'no key warning when only listening locally');
+    assert.ok(checkProductionConfig({ SECRET_KEY: 'x'.repeat(40), HOST: '0.0.0.0' }).warnings.some(w => w.includes('LITTI_API_KEY')), 'warns when reachable from the network');
     assert.ok(checkProductionConfig({ SECRET_KEY: 'x'.repeat(40), PUBLIC_URL: 'ftp://x' }).errors.length > 0);
   });
 

@@ -8,3 +8,4 @@ deployed-*.txt
 .DS_Store
 data/
 deployments/
+*.tgz

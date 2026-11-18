@@ -28,11 +28,29 @@ export function renderInbox(pending: PendingAction[], baseUrl: string): string {
   .tier { white-space:nowrap; font-weight:600; min-width:84px } .desc { flex:1; min-width:0 } small { color:var(--muted) }
   .prog { font-family:ui-monospace,monospace; color:var(--muted) }
   .empty { padding:40px; text-align:center; color:var(--muted); border:1px dashed var(--border); border-radius:10px }
+  .welcome { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:22px 24px; margin-top:8px }
+  .welcome h2 { margin:0 0 4px; font-size:18px } .welcome > p { color:var(--muted); margin:0 0 16px }
+  .steps { display:grid; gap:12px; counter-reset:s }
+  .step { display:grid; grid-template-columns:32px 1fr; gap:12px; align-items:start; counter-increment:s }
+  .step::before { content:counter(s); width:28px; height:28px; border-radius:50%; background:var(--accent); color:#0a0d12; font-weight:800; display:grid; place-items:center }
+  .step b { display:block } .step span { color:var(--muted); font-size:14px }
+  .step code { font-family:ui-monospace,monospace; background:#0a0d12; border:1px solid var(--border); border-radius:6px; padding:2px 7px; color:var(--text); font-size:13px }
+  .step a { color:var(--accent) }
 </style></head>
 <body><main>
   <nav style="display:flex;align-items:center;gap:8px"><a href="/" style="margin-right:20px"><img src="/brand/litti-logo.svg" alt="Litti" height="30" style="display:block;height:30px;width:auto"></a><a href="/">Inbox</a><a href="/changes">Changes</a><a href="/integrations">Integrations</a><a href="/dashboard.html">Dashboard</a><a href="/docs">Docs</a></nav>
   <h1 style="margin-top:24px">Waiting for review</h1>
-  <p class="sub">Open an action, read the diff, pass the quiz. Nothing runs until enough reviewers pass.</p>
-  ${rows || '<div class="empty">✅ Nothing waiting for review.</div>'}
+  <p class="sub">Open an action, read the diff, pass the check. Nothing runs until enough reviewers pass.</p>
+  ${rows || `<div class="empty">✅ Nothing waiting for review.</div>
+  <section class="welcome">
+    <h2>Get started</h2>
+    <p>Three steps and your coding agent can't ship anything risky without a human who read it.</p>
+    <div class="steps">
+      <div class="step"><div><b>Put Claude Code behind Litti</b><span>In a new terminal, inside your project folder, run <code>litti install claude</code> and restart Claude Code. Also works with <code>codex</code> and <code>opencode</code>.</span></div></div>
+      <div class="step"><div><b>Tell your team</b><span><a href="/integrations">Connect Slack, Discord or Jira</a>. Discord takes one minute.</span></div></div>
+      <div class="step"><div><b>Try it</b><span>Ask your agent to change a file and commit it. The commit is blocked with a review link; review it here, then let the agent retry. Want a sandbox first? Run <code>litti demo</code>.</span></div></div>
+    </div>
+    <p style="margin:16px 0 0"><a href="/docs" style="color:var(--accent)">Read the docs →</a> · <a href="/changes" style="color:var(--accent)">Watch your agent's changes →</a></p>
+  </section>`}
 </main></body></html>`;
 }

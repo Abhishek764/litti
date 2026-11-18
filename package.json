@@ -1,14 +1,28 @@
 {
   "name": "litti",
-  "version": "1.0.0",
+  "version": "0.3.0",
   "description": "Proof of review for AI coding agents: risk tiering, comprehension quizzes, rubber-stamp detection, diff-bound tokens, tamper-evident receipts.",
   "type": "module",
+  "bin": {
+    "litti": "dist/main.js"
+  },
+  "files": [
+    "dist",
+    "public",
+    "docs/guide",
+    "demo/sample-diffs",
+    "README.md",
+    "LICENSE",
+    ".env.example"
+  ],
   "scripts": {
     "start": "tsx src/index.ts",
     "demo": "tsx src/demo.ts",
     "litti": "tsx src/cli.ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsc --noEmit && tsx test/smoke.ts && tsx test/production.ts && tsx test/cli.ts && tsx test/notify.ts && tsx test/challenges.ts && tsx test/changes.ts && tsx test/hooks.ts && tsx test/connect.ts && tsx test/docs.ts"
+    "test": "tsc --noEmit && tsx test/smoke.ts && tsx test/production.ts && tsx test/cli.ts && tsx test/notify.ts && tsx test/challenges.ts && tsx test/changes.ts && tsx test/hooks.ts && tsx test/connect.ts && tsx test/docs.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "npm run build"
   },
   "dependencies": {
     "@fastify/formbody": "^8.0.1",
@@ -16,12 +30,12 @@
     "better-sqlite3": "^11.5.0",
     "dotenv": "^16.4.5",
     "fastify": "^5.1.0",
-    "open": "^10.1.0",
-    "tsx": "^4.19.2"
+    "open": "^10.1.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.11",
     "@types/node": "^22.9.0",
+    "tsx": "^4.19.2",
     "typescript": "^5.6.3"
   },
   "license": "MIT",

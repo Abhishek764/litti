@@ -1,6 +1,9 @@
 /** Production entry point. Validates config, serves review pages, inbox, dashboard and the agent API. */
 process.on('unhandledRejection', err => console.error('⚠️  Unhandled error (still running):', err));
-import 'dotenv/config';
+import dotenv from 'dotenv';
+import open from 'open';
+// The installed `litti` command reads ~/.litti/config.env instead of the current folder's .env.
+if (!process.env.LITTI_SKIP_CWD_ENV) dotenv.config();
 import { initDb, closeDb } from './chain/db.js';
 import { buildServer, setNotifier } from './approval/server.js';
 import { multiNotifier, notifierFromEnv } from './notify/index.js';
@@ -24,12 +27,23 @@ async function main() {
   initDb(DB_PATH);
   setNotifier(multiNotifier([notifierFromEnv(), liveConnectedNotifier()]));
 
-  const app = buildServer({ logger: true });
-  await app.listen({ port: PORT, host: HOST });
-  console.log(`📥 Review inbox: ${BASE}/`);
-  console.log(`📊 Dashboard:    ${BASE}/dashboard.html`);
-  console.log(`🤖 Agent API:    POST ${BASE}/api/actions`);
-  if (!process.env.LITTI_NOTIFY_WEBHOOK) console.log('💬 Tip: set LITTI_NOTIFY_WEBHOOK to post approval cards to Slack or Discord.');
+  const app = buildServer({ logger: process.env.LITTI_OPEN ? false : true });
+  try {
+    await app.listen({ port: PORT, host: HOST });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'EADDRINUSE') {
+      console.error(`❌ Port ${PORT} is already in use. Is Litti already running? Open ${BASE}/ or start on another port: litti start --port ${PORT + 1}`);
+      process.exit(1);
+    }
+    throw err;
+  }
+  console.log(`\n✅ Litti is running at ${BASE}/\n`);
+  console.log(`   📥 Inbox & getting started     ${BASE}/`);
+  console.log(`   🧩 Connect Slack/Discord/Jira  ${BASE}/integrations`);
+  console.log(`   📖 Docs                        ${BASE}/docs`);
+  console.log('\n   Gate Claude Code in a project:  cd your-project && litti install claude');
+  console.log('   Stop with Ctrl+C.\n');
+  if (process.env.LITTI_OPEN) await open(`${BASE}/`).catch(() => console.log(`   Open ${BASE}/ in your browser.`));
 
   let stopping = false;
   const shutdown = async (signal: string) => {

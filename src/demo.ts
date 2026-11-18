@@ -4,7 +4,8 @@
  * terminal (and go to LITTI_NOTIFY_WEBHOOK if set).
  */
 process.on('unhandledRejection', err => console.error('⚠️  Unhandled error (still running):', err));
-import 'dotenv/config';
+import dotenv from 'dotenv';
+if (!process.env.LITTI_SKIP_CWD_ENV) dotenv.config();
 import { readFileSync, rmSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -34,10 +35,11 @@ async function main() {
   console.log('🔒 Litti starting...');
 
   // Fresh database each demo run.
-  for (const f of ['litti-demo.db', 'litti-demo.db-wal', 'litti-demo.db-shm']) {
+  const demoDb = process.env.LITTI_DEMO_DB || 'litti-demo.db';
+  for (const f of [demoDb, `${demoDb}-wal`, `${demoDb}-shm`]) {
     if (existsSync(f)) rmSync(f, { force: true });
   }
-  initDb('litti-demo.db');
+  initDb(demoDb);
   enableDemoTamper();
 
   setNotifier(multiNotifier([notifierFromEnv(), liveConnectedNotifier()]));
@@ -86,7 +88,7 @@ async function main() {
   console.log(`📊 Dashboard: ${BASE}/dashboard.html`);
   console.log('\n👉 Open an approval link, read the diff, pass the quiz, Countersign.');
   console.log('   Approved actions deploy and appear on the dashboard.');
-  console.log('   In another terminal, try: npm run litti -- pending\n');
+  console.log('   In another terminal, try: litti pending\n');
   if (!process.argv.includes("--no-open")) {
     await open(urls[0]).catch(() => console.log(`Open ${urls[0]} in your browser.`));
     await open(`${BASE}/dashboard.html`).catch(() => console.log(`Dashboard: ${BASE}/dashboard.html`));

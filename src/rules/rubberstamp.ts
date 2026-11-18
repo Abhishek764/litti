@@ -24,7 +24,7 @@ export function detectRubberStamp(
     reason = `Approved a ${lineCount}-line diff in ${(submission.timeSpentMs / 1000).toFixed(1)}s. That's not a review.`;
   } else if (!quizCorrect) {
     // Quiz wrong — comprehension not demonstrated.
-    reason = 'Comprehension quiz failed.';
+    reason = 'Comprehension check failed.';
   }
   if (!reason) return { flagged: false, reason: '' };
 

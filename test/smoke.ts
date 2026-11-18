@@ -9,6 +9,7 @@ const DEPLOY_DIR = mkdtempSync(join(tmpdir(), 'litti-deploy-'));
 process.env.LITTI_DEPLOY_DIR = DEPLOY_DIR;
 import { initDb, enableDemoTamper, getPending } from '../src/chain/db.js';
 import { buildServer, setNotifier, registerPending } from '../src/approval/server.js';
+import { sampleAnswer } from '../src/agents/challenges.js';
 import { buildActionCard } from '../src/agents/builder.js';
 import { generateQuiz } from '../src/agents/gatekeeper.js';
 import { issueViewStamp } from '../src/approval/identity.js';
@@ -44,11 +45,11 @@ try {
   });
 
   await step('too-fast approval rejected', async () => {
-    assert.equal((await submit(css.id, 'alex', getPending(css.id)!.quizAnswer, 2000)).ok, false);
+    assert.equal((await submit(css.id, 'alex', sampleAnswer(getPending(css.id)!), 2000)).ok, false);
   });
 
   await step('tier 1 correct approval deploys', async () => {
-    const r = await submit(css.id, 'alex', getPending(css.id)!.quizAnswer, 15000);
+    const r = await submit(css.id, 'alex', sampleAnswer(getPending(css.id)!), 15000);
     assert.equal(r.ok, true, r.message);
   });
 
@@ -60,7 +61,7 @@ try {
   });
 
   await step('tier 2 needs two correct approvers', async () => {
-    const a = getPending(mig.id)!.quizAnswer;
+    const a = sampleAnswer(getPending(mig.id)!);
     assert.match((await submit(mig.id, 'priya', a, 40000)).message, /1\/2/);
     assert.equal((await submit(mig.id, 'sam', a, 45000)).ok, true);
   });
@@ -120,7 +121,7 @@ try {
   await step('separation of duties: no double-approval, no self-approval', async () => {
     const c = card('migration.diff', 'migrate', ['migrations/y.sql']);
     registerPending(c, 'http://t');
-    const a = getPending(c.id)!.quizAnswer;
+    const a = sampleAnswer(getPending(c.id)!);
     assert.equal((await submit(c.id, 'priya', a, 40000)).ok, true);
     assert.match((await submit(c.id, 'Priya', a, 40000)).message, /already countersigned/);
     assert.match((await submit(c.id, 'builder-agent', a, 40000)).message, /requester/);

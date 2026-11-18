@@ -14,14 +14,45 @@ function esc(s: string): string {
 }
 
 /** Render a diff as color-coded, line-numbered HTML. */
-function renderDiff(diff: string): string {
+function renderDiff(diff: string, pickable = false): string {
   return diff.split('\n').map((line, i) => {
     let cls = 'ln';
     if (line.startsWith('+') && !line.startsWith('+++')) cls = 'ln add';
     else if (line.startsWith('-') && !line.startsWith('---')) cls = 'ln del';
     else if (line.startsWith('@@')) cls = 'ln hunk';
+    if (pickable) return `<div class="${cls} pick" data-n="${i + 1}" role="button" tabindex="0"><span class="num">${i + 1}</span><span class="code">${esc(line) || ' '}</span></div>`;
     return `<div class="${cls}"><span class="num">${i + 1}</span><span class="code">${esc(line) || ' '}</span></div>`;
   }).join('');
+}
+
+const KIND_LABEL: Record<NonNullable<Quiz['kind']>, string> = {
+  quiz: 'Quiz',
+  'spot-line': 'Spot the line',
+  'type-in': 'Recall',
+  canary: 'Canary check',
+  count: 'Count',
+  explain: 'Explain it',
+};
+
+/** Inputs for the comprehension check, by kind. Answers are checked on the server. */
+function renderChallenge(quiz: Quiz): string {
+  switch (quiz.kind ?? 'quiz') {
+    case 'spot-line':
+      return '<div class="hint">Click the line in the diff above. <span id="pickedline">No line selected.</span></div>';
+    case 'type-in':
+      return '<input id="answer" class="ans" autocomplete="off" spellcheck="false" placeholder="Type it exactly as in the diff"><div class="hint">No options to pick from: you need to have read it.</div>';
+    case 'count':
+      return '<input id="answer" class="ans" type="number" min="0" step="1" inputmode="numeric" placeholder="Number of lines">';
+    case 'explain':
+      return '<textarea id="answer" class="ans" maxlength="600" placeholder="This change ..."></textarea><div class="hint"><span id="wc">0 / 6 words</span> · Saved in the receipt as your review note.</div>';
+    case 'canary':
+      return `<div class="canary">${esc(quiz.subject ?? '')}</div>`
+        + `<label class="opt"><input type="radio" name="quiz" value="yes"><span>${esc(quiz.options[0] ?? 'Yes')}</span></label>`
+        + `<label class="opt"><input type="radio" name="quiz" value="no"><span>${esc(quiz.options[1] ?? 'No')}</span></label>`;
+    default:
+      return quiz.options.map(opt =>
+        `<label class="opt"><input type="radio" name="quiz" value="${esc(opt)}"><span>${esc(opt)}</span></label>`).join('');
+  }
 }
 
 /** Build the full approval page HTML string. */
@@ -45,9 +76,8 @@ export function renderApprovalPage(args: {
   const { card, tier, reasons, requiredApprovers, approvalsSoFar, quiz, approver, identityLocked, allowTyped, viewStamp, ticket } = args;
   const meta = TIER_META[tier];
   const lineCount = card.diff.split('\n').length;
-  const options = quiz.options.map((opt, i) =>
-    `<label class="opt"><input type="radio" name="quiz" value="${esc(opt)}"><span>${esc(opt)}</span></label>`
-  ).join('');
+  const kind = quiz.kind ?? 'quiz';
+  const challengeHtml = renderChallenge(quiz);
 
   return `<!doctype html><html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -88,6 +118,13 @@ button:disabled{opacity:.4;cursor:not-allowed}
 #result{margin-top:16px;font-weight:600}
 .ok{color:var(--green)}.bad{color:var(--red)}
 .scrollnote{color:var(--yellow);font-size:12px;margin-top:8px}
+.kind{display:inline-block;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--blue);border:1px solid var(--border);border-radius:999px;padding:2px 10px;margin-bottom:10px}
+.ln.pick{cursor:pointer}.ln.pick:hover{outline:1px solid var(--blue);outline-offset:-1px}
+.ln.picked{outline:2px solid var(--blue);outline-offset:-2px;background:#0f2a4a}
+.canary{font-family:var(--font-mono);font-size:13px;background:#0a0d12;border:1px dashed var(--yellow);border-radius:6px;padding:12px;margin-bottom:12px;white-space:pre-wrap;word-break:break-all}
+.ans{width:100%;padding:10px;background:#0a0d12;border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-mono);font-size:14px}
+textarea.ans{font-family:var(--font-sans);min-height:84px;resize:vertical}
+.hint{font-size:12px;color:var(--text-muted);margin-top:6px}
 </style></head>
 <body><div class="wrap">
 <h1 style="display:flex;align-items:center;gap:12px"><img src="/brand/litti-logo.svg" alt="Litti" height="30" style="display:block;height:30px;width:auto"><span>· COUNTERSIGN</span></h1>
@@ -105,13 +142,14 @@ button:disabled{opacity:.4;cursor:not-allowed}
 </div>
 
 <div class="card">
-  <div class="diff" id="diff">${renderDiff(card.diff)}<div id="sentinel"></div></div>
+  <div class="diff" id="diff">${renderDiff(card.diff, kind === 'spot-line')}<div id="sentinel"></div></div>
   ${lineCount > 20 ? '<div class="scrollnote" id="scrollnote">↓ Scroll to the end of the diff to enable approval.</div>' : ''}
 </div>
 
-<div class="card">
+<div class="card challenge">
+  <div class="kind">${esc(KIND_LABEL[kind])}</div>
   <div class="q" id="quizq">${esc(quiz.question)}</div>
-  ${options}
+  ${challengeHtml}
 </div>
 
 <div class="card">
@@ -142,10 +180,24 @@ if(needScroll){
 
 const reviewed=document.getElementById('reviewed');
 const btn=document.getElementById('submit');
-function selectedAnswer(){const r=document.querySelector('input[name=quiz]:checked');return r?r.value:null;}
+const kind=${JSON.stringify(kind)};
+let picked=null;
+function selectedAnswer(){
+  if(kind==='spot-line')return picked;
+  const r=document.querySelector('input[name=quiz]:checked');if(r)return r.value;
+  const t=document.getElementById('answer');if(!t)return null;
+  const v=t.value.trim();
+  if(kind==='explain'){const w=v.split(/\s+/).filter(Boolean).length;const c=document.getElementById('wc');if(c)c.textContent=w+' / 6 words';return w>=6?v:null;}
+  return v||null;
+}
 function refresh(){btn.disabled=!(reviewed.checked && scrolled && selectedAnswer());}
 reviewed.addEventListener('change',refresh);
 document.querySelectorAll('input[name=quiz]').forEach(r=>r.addEventListener('change',refresh));
+const ansEl=document.getElementById('answer');if(ansEl)ansEl.addEventListener('input',refresh);
+if(kind==='spot-line'){
+  const pickLine=(el)=>{document.querySelectorAll('.ln.picked').forEach(x=>x.classList.remove('picked'));el.classList.add('picked');picked=el.dataset.n;const p=document.getElementById('pickedline');if(p)p.textContent='Selected line '+picked;refresh();};
+  document.querySelectorAll('.ln.pick').forEach(el=>{el.addEventListener('click',()=>pickLine(el));el.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();pickLine(el);}});});
+}
 
 btn.addEventListener('click',async()=>{
   btn.disabled=true;

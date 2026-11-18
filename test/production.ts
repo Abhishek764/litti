@@ -12,6 +12,7 @@ import { initDb, getPending, getSetting } from '../src/chain/db.js';
 import { buildServer, setNotifier } from '../src/approval/server.js';
 import { issueTicket, issueViewStamp } from '../src/approval/identity.js';
 import { checkProductionConfig } from '../src/config.js';
+import { sampleAnswer } from '../src/agents/challenges.js';
 
 initDb(':memory:');
 const room: string[] = [];
@@ -27,7 +28,7 @@ const propose = async (headers: Record<string, string> = {}) => (await app.injec
 })).json();
 const submit = (id: string, body: Record<string, unknown>, headers: Record<string, string> = {}) =>
   app.inject({ method: 'POST', url: `/approve/${id}/submit`, headers, payload: { scrolledToBottom: true, ...body } });
-const answer = (id: string) => getPending(id)!.quizAnswer;
+const answer = (id: string) => sampleAnswer(getPending(id)!);
 const stamp = (id: string, agoMs: number) => issueViewStamp(id, Date.now() - agoMs);
 
 let passed = 0;

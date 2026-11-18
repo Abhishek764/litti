@@ -47,7 +47,7 @@ sequenceDiagram
     L->>L: tier 0-3, reasons, quiz from the diff
     L->>N: 🔒 Approval needed: Tier 2 · 2 reviewers
     R->>L: open personal review link (server stamps open time)
-    R->>L: read diff · answer quiz · countersign
+    R->>L: read diff · pass the check · countersign
     alt too fast / wrong answer
         L->>N: ⚠️ rubber-stamp blocked, reviews reset, next tier +1
     else passed, more reviewers needed
@@ -65,10 +65,21 @@ sequenceDiagram
 
 1. **Risk tier (0–3)** from deterministic rules: critical paths (`migration`, `auth`, `prod`, `.env`…), diff size, destructive commands (`DROP`, `DELETE FROM`, `rm -rf`, `git push --force`), irreversibility. Calling a risky action "lint" doesn't skip review.
 2. **Enough distinct reviewers**: Tier 1 = 1, Tier 2 = 2, Tier 3 = 3. The requester can't review their own action, and nobody counts twice.
-3. **Comprehension quiz** generated from the diff itself ("What does `border-radius` change to?", "Which table does this migration alter?").
+3. **Comprehension check that changes every time**, generated from the diff itself. The multiple-choice quiz is only one kind; Litti picks a different kind per action (never the same twice in a row) so approving never becomes muscle memory:
+
+   | Kind | The reviewer… |
+   |---|---|
+   | Quiz | picks the right fact from 4 options ("Which table does this migration alter?") |
+   | Spot the line | clicks the line in the diff that does the risky thing |
+   | Recall | types the table / function / route / new value from memory, no options to guess from |
+   | Canary check | says whether a line was really in the change; sometimes it's a subtly altered fake |
+   | Count | types how many lines the change adds or removes (small diffs) |
+   | Explain it | writes a one-sentence summary that names what changed; saved in the receipt as the review note |
+
+   Tier 2+ never uses the guessable kinds (canary, count). Restrict the set with `LITTI_CHALLENGES=quiz,spot-line,...`.
 4. **Real reading time**, measured by the server from a signed page-open stamp. The browser's clock is never trusted.
 5. **Scrolled to the end** of long diffs.
-6. **Rubber-stamp detector**: too fast on a big diff or a wrong quiz answer is blocked and announced, every review on the action is reset, and the next action's tier goes up by one. Repeat offenders are called out.
+6. **Rubber-stamp detector**: too fast on a big diff or a wrong answer is blocked and announced, every review on the action is reset, and the next action's tier goes up by one. Repeat offenders are called out.
 7. **Diff-bound token**: an HMAC-signed token tied to the SHA-256 of the exact approved diff. Change one byte and it's dead. Tokens are single-use.
 8. **Receipt chain**: every decision is SHA-256 hash-linked to the previous one. Editing history breaks the chain visibly.
 
@@ -91,7 +102,7 @@ migration, a destructive cleanup). Your browser opens the first review page and 
 - **Review inbox:** http://127.0.0.1:3847/
 - **Dashboard:** http://127.0.0.1:3847/dashboard.html
 
-Try it: read the diff, answer the quiz, countersign. Then answer wrong or too fast on the Tier 3
+Try it: read the diff, pass the comprehension check, countersign. Then answer wrong or too fast on the Tier 3
 action and watch the rubber-stamp detector block it. In another terminal:
 
 ```bash
@@ -193,6 +204,7 @@ or `npm start` on any Node 20.10+ host. `npm start` validates the config and ref
 | `LITTI_WEBHOOK_SECRET` | Deploy webhook signing key (defaults to `SECRET_KEY`). |
 | `LITTI_DB_PATH` | SQLite file (default `data/litti.db`). |
 | `LITTI_DEPLOY_DIR` | Where deploy records are written when no deploy webhook is set (default `deployments`). |
+| `LITTI_CHALLENGES` | Comma list of allowed check kinds (`quiz,spot-line,type-in,canary,count,explain`). Default: all. |
 | `LITTI_ALLOW_SELF_ASSERTED` | `true` lets reviewers type a name. Demo only. Leave unset in production. |
 | `LITTI_URL` | CLI only: where the `litti` command finds the server (default `http://127.0.0.1:3847`). |
 | `HOST`, `APPROVAL_SERVER_PORT`, `LOG_LEVEL`, `TRUST_PROXY` | Server settings. |
@@ -204,7 +216,7 @@ Example receiver: [docs/webhook-receiver.md](docs/webhook-receiver.md).
 
 **Architecture and roadmap to HA, hybrid and multi-region:** [docs/architecture.md](docs/architecture.md).
 
-**Tuning:** add your own critical paths in [src/rules/tiering.ts](src/rules/tiering.ts) and quiz templates in [src/agents/gatekeeper.ts](src/agents/gatekeeper.ts).
+**Tuning:** add your own critical paths in [src/rules/tiering.ts](src/rules/tiering.ts) quiz templates in [src/agents/gatekeeper.ts](src/agents/gatekeeper.ts) and challenge kinds in [src/agents/challenges.ts](src/agents/challenges.ts).
 
 ### CLI
 

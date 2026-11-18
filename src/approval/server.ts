@@ -7,6 +7,7 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import type { ActionCard, ActionEvent, ApprovalSubmission, ApprovalToken, Notifier, PendingAction, QuizResult, Tier } from '../types.js';
 import { buildActionCard } from '../agents/builder.js';
 import { gatekeep } from '../agents/gatekeeper.js';
+import { checkAnswer, chooseChallenge } from '../agents/challenges.js';
 import { assessRisk } from '../rules/tiering.js';
 import { detectRubberStamp } from '../rules/rubberstamp.js';
 import { renderApprovalPage } from './page.js';
@@ -68,11 +69,16 @@ function takeTierBump(): number {
 
 /** Tier-and-quiz an action, apply any pending rubber-stamp bump, persist it, announce it. */
 export function registerPending(card: ActionCard, baseUrl: string): { id: string; url: string; tier: Tier } {
-  const { assessment, quiz } = gatekeep(card);
+  const { assessment } = gatekeep(card);
   const bump = assessment.tier === 0 ? 0 : takeTierBump();
   const tier = Math.min(assessment.tier + bump, 3) as Tier;
   const reasons = bump ? [...assessment.reasons, 'Tier +1: previous review was rubber-stamped'] : assessment.reasons;
   const requiredApprovers = tier === 0 ? 0 : tier === 1 ? 1 : tier === 2 ? 2 : 3;
+
+  // Vary the comprehension check per action: quiz sometimes, other challenges the rest.
+  const challenge = chooseChallenge(card, tier, { lastKind: getSetting('last_challenge_kind') });
+  if (tier > 0) setSetting('last_challenge_kind', challenge.quiz.kind ?? 'quiz');
+  const quiz = challenge.quiz;
 
   insertPending({
     id: card.id,
@@ -81,7 +87,7 @@ export function registerPending(card: ActionCard, baseUrl: string): { id: string
     requiredApprovers,
     currentApprovals: [],
     quiz,
-    quizAnswer: quiz.options[quiz.correctIndex],
+    quizAnswer: challenge.answer,
     status: 'pending',
     createdAt: new Date().toISOString(),
   });
@@ -194,13 +200,13 @@ export function buildServer(opts: { logger?: boolean } = {}): FastifyInstance {
     const sub: ApprovalSubmission = {
       actionId: pending.id,
       approver: who.name,
-      quizAnswer: String(body.quizAnswer ?? ''),
+      quizAnswer: String(body.quizAnswer ?? '').slice(0, 600),
       timeSpentMs: Number.isFinite(clientMs) && clientMs >= 0 ? Math.min(clientMs, serverMs) : serverMs,
       scrolledToBottom: body.scrolledToBottom === true,
       timestamp: new Date().toISOString(),
       identitySource: who.source,
     };
-    const quizCorrect = sub.quizAnswer === pending.quizAnswer;
+    const quizCorrect = checkAnswer(pending.quiz.kind, pending.quizAnswer, sub.quizAnswer, card);
     const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
     // Separation of duties: the requester can't approve, and nobody counts twice.
@@ -228,7 +234,7 @@ export function buildServer(opts: { logger?: boolean } = {}): FastifyInstance {
     if (card.diff.split('\n').length > 20 && !sub.scrolledToBottom) {
       return { ok: false, message: 'Please scroll through the entire diff first.' };
     }
-    if (!quizCorrect) return { ok: false, message: 'Please review the diff more carefully — quiz answer is wrong.' };
+    if (!quizCorrect) return { ok: false, message: 'Please review the diff more carefully — your answer to the comprehension check is wrong.' };
 
     const approvals = [...pending.currentApprovals, sub];
     if (approvals.length < pending.requiredApprovers) {

@@ -29,11 +29,21 @@ export interface RiskAssessment {
   requiredApprovers: number;
 }
 
-/** A comprehension quiz generated from a diff. */
+/**
+ * How the reviewer proves they read the diff. The quiz is one of several kinds;
+ * Litti varies the kind per action so reviews never become muscle memory.
+ */
+export type ChallengeKind = 'quiz' | 'spot-line' | 'type-in' | 'canary' | 'count' | 'explain';
+
+/** A comprehension check generated from a diff (multiple choice or another challenge kind). */
 export interface Quiz {
   question: string;
   options: string[];
   correctIndex: number;
+  /** Challenge kind. Missing means 'quiz' (records from older versions). */
+  kind?: ChallengeKind;
+  /** Extra content shown with the question, e.g. the line for a canary check. */
+  subject?: string;
 }
 
 /** What a human submits from the approval page. */

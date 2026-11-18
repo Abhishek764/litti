@@ -2,7 +2,7 @@
 import Database from 'better-sqlite3';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import type { Receipt, PendingAction } from '../types.js';
+import type { Receipt, PendingAction, Quiz } from '../types.js';
 
 let db: Database.Database;
 
@@ -57,6 +57,7 @@ export function initDb(path = 'litti.db'): Database.Database {
   // Additive migrations for databases created by older versions.
   const cols = (db.prepare('PRAGMA table_info(pending_actions)').all() as { name: string }[]).map(c => c.name);
   if (!cols.includes('approval_token')) db.exec('ALTER TABLE pending_actions ADD COLUMN approval_token TEXT');
+  if (!cols.includes('challenge')) db.exec('ALTER TABLE pending_actions ADD COLUMN challenge TEXT');
   return db;
 }
 
@@ -125,8 +126,8 @@ export function corruptReceipt(id: string, badHash: string): void {
 /** Persist a pending action awaiting approval. */
 export function insertPending(p: PendingAction): void {
   getDb().prepare(
-    `INSERT INTO pending_actions (id, action_card, tier, required_approvers, current_approvals, quiz_question, quiz_options, quiz_answer, status, created_at)
-     VALUES (@id, @actionCard, @tier, @requiredApprovers, @currentApprovals, @quizQuestion, @quizOptions, @quizAnswer, @status, @createdAt)`
+    `INSERT INTO pending_actions (id, action_card, tier, required_approvers, current_approvals, quiz_question, quiz_options, quiz_answer, challenge, status, created_at)
+     VALUES (@id, @actionCard, @tier, @requiredApprovers, @currentApprovals, @quizQuestion, @quizOptions, @quizAnswer, @challenge, @status, @createdAt)`
   ).run({
     id: p.id,
     actionCard: JSON.stringify(p.actionCard),
@@ -136,9 +137,18 @@ export function insertPending(p: PendingAction): void {
     quizQuestion: p.quiz.question,
     quizOptions: JSON.stringify(p.quiz.options),
     quizAnswer: p.quizAnswer,
+    challenge: JSON.stringify({ kind: p.quiz.kind ?? 'quiz', subject: p.quiz.subject }),
     status: p.status,
     createdAt: p.createdAt,
   });
+}
+
+/** Challenge kind + subject column; rows from older versions are plain quizzes. */
+function parseChallenge(raw: string | null): { kind: Quiz['kind']; subject?: string } {
+  try {
+    const c = raw ? JSON.parse(raw) : null;
+    return { kind: c?.kind ?? 'quiz', subject: typeof c?.subject === 'string' ? c.subject : undefined };
+  } catch { return { kind: 'quiz' }; }
 }
 
 /** Fetch a pending action by id, or null. */
@@ -151,7 +161,7 @@ export function getPending(id: string): PendingAction | null {
     tier: row.tier,
     requiredApprovers: row.required_approvers,
     currentApprovals: JSON.parse(row.current_approvals),
-    quiz: { question: row.quiz_question, options: JSON.parse(row.quiz_options), correctIndex: -1 },
+    quiz: { question: row.quiz_question, options: JSON.parse(row.quiz_options), correctIndex: -1, ...parseChallenge(row.challenge) },
     quizAnswer: row.quiz_answer,
     status: row.status,
     createdAt: row.created_at,

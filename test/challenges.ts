@@ -1,0 +1,163 @@
+/** Review challenge tests: every kind, the chooser, the checker, the review page, and the full server flow. */
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+process.env.SECRET_KEY = 'challenge-test-secret-'.repeat(3);
+process.env.LITTI_ALLOW_SELF_ASSERTED = 'true';
+process.env.LITTI_DEPLOY_DIR = join(process.env.TEMP || '/tmp', `litti-ch-${process.pid}`);
+import { initDb, getPending } from '../src/chain/db.js';
+import { buildActionCard } from '../src/agents/builder.js';
+import { buildChallenge, chooseChallenge, checkAnswer, allowedKinds, sampleAnswer, CHALLENGE_KINDS } from '../src/agents/challenges.js';
+import { buildServer, registerPending, setNotifier } from '../src/approval/server.js';
+import { renderApprovalPage } from '../src/approval/page.js';
+import { issueViewStamp } from '../src/approval/identity.js';
+import type { ActionCard, ChallengeKind, PendingAction } from '../src/types.js';
+
+initDb(':memory:');
+setNotifier(null);
+
+const sample = (f: string) => readFileSync(join('demo', 'sample-diffs', f), 'utf8');
+const card = (diff: string, description = 'Change under review', paths = ['src/x.ts']): ActionCard =>
+  buildActionCard({ action: 'edit', description, diff, touchedPaths: paths, reversible: true, rollbackPlan: '' });
+
+const MIGRATION = card(sample('migration.diff'), 'Add migration', ['migrations/x.sql']);
+const CSS = card(sample('css-fix.diff'), 'Round the buttons', ['src/styles/button.css']);
+const CODE = card('--- a/src/pay.ts\n+++ b/src/pay.ts\n@@ -1,3 +1,3 @@\n-export function chargeCard(amount) { return amount; }\n+export function chargeCard(amount) { return amount * 100; }\n const retries = 3;', 'Charge in cents', ['src/pay.ts']);
+const pendingOf = (c: ActionCard, kind: ChallengeKind): PendingAction => {
+  const ch = buildChallenge(kind, c)!;
+  return { id: c.id, actionCard: c, tier: 1, requiredApprovers: 1, currentApprovals: [], quiz: ch.quiz, quizAnswer: ch.answer, status: 'pending', createdAt: '' };
+};
+
+let passed = 0;
+async function step(name: string, fn: () => Promise<void> | void) { await fn(); passed++; console.log(`  ✓ ${name}`); }
+
+await step('every kind builds for a code diff, and its sample answer passes', () => {
+  for (const kind of CHALLENGE_KINDS) {
+    for (let i = 0; i < 20; i++) {
+      const p = pendingOf(CODE, kind);
+      assert.equal(p.quiz.kind, kind);
+      assert.ok(checkAnswer(kind, p.quizAnswer, sampleAnswer(p), CODE), `${kind}: sample answer should pass`);
+      assert.equal(checkAnswer(kind, p.quizAnswer, '', CODE), false, `${kind}: empty answer fails`);
+    }
+  }
+});
+
+await step('spot-line: only the risky line counts', () => {
+  const ch = buildChallenge('spot-line', MIGRATION)!;
+  const lines = MIGRATION.diff.split('\n');
+  for (const n of ch.answer.split(',')) assert.match(lines[Number(n) - 1], /^[+-]/, 'answer is a changed line');
+  assert.equal(checkAnswer('spot-line', ch.answer, '1', MIGRATION), false, 'file header line is wrong');
+  assert.equal(checkAnswer('spot-line', ch.answer, 'abc', MIGRATION), false);
+  const css = buildChallenge('spot-line', CSS)!;
+  assert.match(css.quiz.question, /border-radius/);
+  assert.match(lines.length ? CSS.diff.split('\n')[Number(css.answer) - 1] : '', /^\+.*8px/);
+});
+
+await step('type-in: case-insensitive, quotes ignored, one typo forgiven on long names only', () => {
+  const p = pendingOf(CODE, 'type-in');
+  assert.equal(p.quizAnswer, 'chargecard');
+  assert.ok(checkAnswer('type-in', p.quizAnswer, 'ChargeCard', CODE));
+  assert.ok(checkAnswer('type-in', p.quizAnswer, '`chargeCard`', CODE));
+  assert.ok(checkAnswer('type-in', p.quizAnswer, 'chargeCrd', CODE), 'one typo ok');
+  assert.equal(checkAnswer('type-in', p.quizAnswer, 'chrgeCrd', CODE), false, 'two typos not ok');
+  assert.equal(checkAnswer('type-in', p.quizAnswer, 'refund', CODE), false);
+  assert.equal(checkAnswer('type-in', 'users', 'user', MIGRATION), false, 'short names must be exact');
+});
+
+await step('canary: fakes never appear in the diff, real lines always do', () => {
+  let fakes = 0, reals = 0;
+  for (let i = 0; i < 60; i++) {
+    const ch = buildChallenge('canary', CODE)!;
+    const shown = ch.quiz.subject!;
+    if (ch.answer === 'no') { fakes++; assert.ok(!CODE.diff.includes(shown), `fake leaked: ${shown}`); }
+    else { reals++; assert.ok(CODE.diff.includes(shown)); }
+    assert.equal(checkAnswer('canary', ch.answer, ch.answer === 'yes' ? 'no' : 'yes', CODE), false);
+  }
+  assert.ok(fakes > 5 && reals > 5, `both outcomes happen (fakes ${fakes}, reals ${reals})`);
+});
+
+await step('count: exact integer only, skipped on big diffs', () => {
+  const ch = buildChallenge('count', CODE)!;
+  assert.ok(checkAnswer('count', ch.answer, ` ${ch.answer} `, CODE));
+  assert.equal(checkAnswer('count', ch.answer, `${Number(ch.answer) + 1}`, CODE), false);
+  assert.equal(checkAnswer('count', ch.answer, `${ch.answer}.0`, CODE), false);
+  const big = card(Array.from({ length: 30 }, (_, i) => `+line ${i}`).join('\n'));
+  assert.equal(buildChallenge('count', big), null);
+});
+
+await step('explain: needs 6+ words naming the change; copying the description fails', () => {
+  const p = pendingOf(CODE, 'explain');
+  const ok = 'Converts the chargeCard amount into cents by multiplying it';
+  assert.ok(checkAnswer('explain', p.quizAnswer, ok, CODE));
+  assert.equal(checkAnswer('explain', p.quizAnswer, 'Looks good to me', CODE), false, 'too short');
+  assert.equal(checkAnswer('explain', p.quizAnswer, 'I reviewed everything and it looks totally fine to ship', CODE), false, 'names nothing');
+  const long = card(CODE.diff, 'Multiply the charge amount by one hundred for cents');
+  const lp = pendingOf(long, 'explain');
+  assert.equal(checkAnswer('explain', lp.quizAnswer, 'Multiply the charge amount by one hundred for cents', long), false, 'copied description');
+});
+
+await step('chooser: varies kinds, never repeats the last kind, quiz is not every time', () => {
+  const seen = new Map<string, number>();
+  let last: string | undefined;
+  for (let i = 0; i < 300; i++) {
+    const ch = chooseChallenge(CODE, 1, { lastKind: last });
+    assert.notEqual(ch.quiz.kind, last, 'same kind twice in a row');
+    last = ch.quiz.kind;
+    seen.set(last!, (seen.get(last!) ?? 0) + 1);
+  }
+  assert.equal(seen.size, CHALLENGE_KINDS.length, `all kinds used: ${[...seen.keys()]}`);
+  const quizShare = (seen.get('quiz') ?? 0) / 300;
+  assert.ok(quizShare > 0.1 && quizShare < 0.5, `quiz share ${quizShare}`);
+});
+
+await step('chooser: tier 2+ never uses guessable kinds; LITTI_CHALLENGES restricts', () => {
+  for (let i = 0; i < 200; i++) {
+    const k = chooseChallenge(CODE, 2).quiz.kind;
+    assert.ok(k !== 'canary' && k !== 'count', `tier 2 got ${k}`);
+  }
+  assert.deepEqual(allowedKinds({ LITTI_CHALLENGES: 'quiz, explain, bogus' }), ['quiz', 'explain']);
+  assert.deepEqual(allowedKinds({}), CHALLENGE_KINDS);
+  for (let i = 0; i < 30; i++) assert.equal(chooseChallenge(CODE, 1, { allowed: ['explain'] }).quiz.kind, 'explain');
+  // A diff with no extractable facts still gets a check.
+  const bare = card('+hello world');
+  for (let i = 0; i < 30; i++) assert.ok(chooseChallenge(bare, 2, { allowed: ['spot-line'] }).quiz.kind);
+});
+
+await step('review page renders the right input for each kind, and never the answer', () => {
+  const base = { tier: 1 as const, reasons: [], requiredApprovers: 1, approvalsSoFar: 0, approver: '', identityLocked: false, allowTyped: true, viewStamp: 'v', ticket: '' };
+  const expect: Record<ChallengeKind, RegExp> = {
+    quiz: /type="radio" name="quiz"/, 'spot-line': /class="ln [^"]*pick"/, 'type-in': /<input id="answer"/,
+    canary: /class="canary"/, count: /type="number"/, explain: /<textarea id="answer"/,
+  };
+  for (const kind of CHALLENGE_KINDS) {
+    const ch = buildChallenge(kind, CODE)!;
+    const html = renderApprovalPage({ ...base, card: CODE, quiz: ch.quiz });
+    assert.match(html, expect[kind], kind);
+    if (kind === 'canary') assert.ok(!html.includes(`value="${ch.answer === 'yes' ? 'Yes' : 'No'} —`), 'canary options carry no hint');
+  }
+});
+
+await step('server: each kind can be passed end to end, and a wrong answer is blocked', async () => {
+  const app = buildServer();
+  for (const kind of CHALLENGE_KINDS) {
+    process.env.LITTI_CHALLENGES = kind;
+    const c = card(CODE.diff, `Charge in cents (${kind})`, ['src/pay.ts']);
+    registerPending(c, 'http://t');
+    const p = getPending(c.id)!;
+    assert.equal(p.quiz.kind, kind, 'kind persisted');
+    const page = await app.inject({ method: 'GET', url: `/approve/${c.id}` });
+    assert.equal(page.statusCode, 200);
+    const submit = (approver: string, quizAnswer: string) => app.inject({
+      method: 'POST', url: `/approve/${c.id}/submit`,
+      payload: { approver, quizAnswer, scrolledToBottom: true, timeSpentMs: 40000, viewStamp: issueViewStamp(c.id, Date.now() - 40000) },
+    }).then(r => r.json());
+    const bad = await submit('wrong-wendy', kind === 'canary' ? (p.quizAnswer === 'yes' ? 'no' : 'yes') : kind === 'count' ? '999' : 'nope');
+    assert.equal(bad.ok, false, `${kind}: wrong answer blocked`);
+    const good = await submit('right-rita', sampleAnswer(getPending(c.id)!));
+    assert.equal(good.ok, true, `${kind}: ${good.message}`);
+  }
+  delete process.env.LITTI_CHALLENGES;
+  await app.close();
+});
+
+console.log(`\nchallenges: ${passed} passed`);

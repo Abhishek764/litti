@@ -3,7 +3,8 @@ process.on('unhandledRejection', err => console.error('⚠️  Unhandled error (
 import 'dotenv/config';
 import { initDb, closeDb } from './chain/db.js';
 import { buildServer, setNotifier } from './approval/server.js';
-import { notifierFromEnv } from './notify/index.js';
+import { multiNotifier, notifierFromEnv } from './notify/index.js';
+import { liveConnectedNotifier } from './connect/notifier.js';
 import { checkProductionConfig } from './config.js';
 
 const PORT = Number(process.env.APPROVAL_SERVER_PORT) || 3847;
@@ -21,7 +22,7 @@ async function main() {
   console.log('🔒 Litti starting...');
 
   initDb(DB_PATH);
-  setNotifier(notifierFromEnv());
+  setNotifier(multiNotifier([notifierFromEnv(), liveConnectedNotifier()]));
 
   const app = buildServer({ logger: true });
   await app.listen({ port: PORT, host: HOST });

@@ -12,7 +12,8 @@ import { randomBytes } from 'node:crypto';
 import open from 'open';
 import { initDb, enableDemoTamper } from './chain/db.js';
 import { buildServer, setNotifier, registerPending } from './approval/server.js';
-import { notifierFromEnv } from './notify/index.js';
+import { multiNotifier, notifierFromEnv } from './notify/index.js';
+import { liveConnectedNotifier } from './connect/notifier.js';
 import { buildActionCard } from './agents/builder.js';
 import type { ActionKind } from './types.js';
 
@@ -39,7 +40,7 @@ async function main() {
   initDb('litti-demo.db');
   enableDemoTamper();
 
-  setNotifier(notifierFromEnv());
+  setNotifier(multiNotifier([notifierFromEnv(), liveConnectedNotifier()]));
 
   const app = buildServer();
   await app.listen({ port: PORT, host: '127.0.0.1' });

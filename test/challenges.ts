@@ -133,6 +133,7 @@ await step('review page renders the right input for each kind, and never the ans
     const ch = buildChallenge(kind, CODE)!;
     const html = renderApprovalPage({ ...base, card: CODE, quiz: ch.quiz });
     assert.match(html, expect[kind], kind);
+    for (const m of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) assert.doesNotThrow(() => new Function(m[1]), `${kind}: page script parses`);
     if (kind === 'canary') assert.ok(!html.includes(`value="${ch.answer === 'yes' ? 'Yes' : 'No'} —`), 'canary options carry no hint');
   }
 });

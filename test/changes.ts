@@ -66,6 +66,8 @@ try {
     const page = await app.inject({ method: 'GET', url: '/changes' });
     assert.equal(page.statusCode, 200);
     assert.match(page.body, /Request review/);
+    // The page script lives in a TS template string, where escapes get eaten: it must still parse.
+    for (const m of page.body.matchAll(/<script>([\s\S]*?)<\/script>/g)) assert.doesNotThrow(() => new Function(m[1]), 'Changes page script parses');
     const api = (await app.inject({ method: 'GET', url: '/api/changes' })).json();
     assert.equal(api.ok, true);
     assert.equal(api.files.length, 3);

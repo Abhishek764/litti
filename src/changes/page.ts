@@ -84,7 +84,7 @@ const H={'content-type':'application/json','x-litti-ui':'1'};
 let state={version:'',files:[],threads:[]};
 const el=(tag,cls,text)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e;};
 const ago=(iso)=>{const s=Math.max(0,(Date.now()-new Date(iso))/1000);return s<60?'just now':s<3600?Math.floor(s/60)+'m ago':s<86400?Math.floor(s/3600)+'h ago':new Date(iso).toLocaleDateString();};
-function toast(text,link){const t=document.getElementById('toast');t.textContent=text;if(link&&/^https?:\/\//.test(link)){t.append(' ');const a=el('a','', 'Open review →');a.href=link;t.append(a);}t.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>t.style.display='none',link?20000:5000);}
+function toast(text,link){const t=document.getElementById('toast');t.textContent=text;if(link&&/^https?:/i.test(link)){t.append(' ');const a=el('a','', 'Open review →');a.href=link;t.append(a);}t.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>t.style.display='none',link?20000:5000);}
 const fileId=(p)=>'f-'+Array.from(p).map(c=>c.charCodeAt(0).toString(36)).join('');
 
 /** Parse one file's diff into rows with old/new line numbers. */

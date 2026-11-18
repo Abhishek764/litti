@@ -15,6 +15,7 @@ import { createToken, validateToken } from './token.js';
 import { allowSelfAsserted, elapsedSinceView, issueTicket, issueViewStamp, resolveReviewer, verifyTicket } from './identity.js';
 import { renderInbox } from './inbox.js';
 import { registerChangesRoutes } from '../changes/routes.js';
+import { registerConnectRoutes } from '../connect/routes.js';
 import { execute } from '../deploy/executor.js';
 import { appendReceipt, attentionScore } from '../chain/receipt.js';
 import { verifyChain } from '../chain/verify.js';
@@ -164,6 +165,9 @@ export function buildServer(opts: { logger?: boolean } = {}): FastifyInstance {
     baseUrlFor,
     registerPending,
   });
+
+  // Integrations page + Connect buttons (Slack, Discord, Jira).
+  registerConnectRoutes(app);
 
   app.get('/healthz', () => ({ ok: true, receipts: allReceipts().length }));
 

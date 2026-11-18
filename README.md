@@ -210,6 +210,13 @@ Agents authenticate with `x-litti-key`; reviewers are allowed in the same way as
 
 ## Team notifications
 
+**Easiest: open `/integrations` and click Connect.** Slack, Discord and Jira each have a Connect button
+that signs you in on their site and brings you back connected; tokens are stored encrypted with your `SECRET_KEY`.
+The page walks you through the one-time app setup with copy buttons for every value (Slack gets a
+pre-filled app), and Slack and Discord also accept a pasted webhook link if you just want it working in a minute.
+In production only people in `LITTI_ADMINS` (identified by your SSO header) can manage integrations.
+Prefer config files? The environment variables below still work.
+
 Litti posts approval cards, countersign progress, rubber-stamp warnings and deploy results to your team.
 Approving never happens in chat or in a ticket: reviewers always open the review page and pass the quiz.
 Only metadata is sent (description, paths, risk reasons, line count, diff hash). The diff itself never leaves your server.
@@ -252,6 +259,8 @@ or `npm start` on any Node 20.10+ host. `npm start` validates the config and ref
 | `LITTI_REPO_PATH` | Git repository the Changes view watches (default: the server's working directory). |
 | `LITTI_AGENT_NAME` | Name shown for agent replies and on actions sent from Changes (default `agent`). |
 | `LITTI_GATE_COMMIT`, `LITTI_GATE_PATTERNS`, `LITTI_HOOK_FAIL_OPEN` | Agent hook tuning (see Connect your coding agent). |
+| `LITTI_ADMINS` | Comma list of SSO identities allowed to manage `/integrations` in production. |
+| `SLACK_CLIENT_ID`/`_SECRET`, `DISCORD_CLIENT_ID`/`_SECRET`, `ATLASSIAN_CLIENT_ID`/`_SECRET` | Optional: Connect-button app credentials from config instead of the Integrations page. |
 | `LITTI_CHALLENGES` | Comma list of allowed check kinds (`quiz,spot-line,type-in,canary,count,explain`). Default: all. |
 | `LITTI_ALLOW_SELF_ASSERTED` | `true` lets reviewers type a name. Demo only. Leave unset in production. |
 | `LITTI_URL` | CLI only: where the `litti` command finds the server (default `http://127.0.0.1:3847`). |

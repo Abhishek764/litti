@@ -140,10 +140,10 @@ cols.forEach(([title, bg, items], i) => {
 
 // ─────────────────────────────── BOARD 3: SWARM ORG ───────────────────────────────
 X = 0; Y = 1290;
-text(X, Y, '3 · Litti Labs — the agent company', { size: 34 });
+text(X, Y, '3 · Litti Labs — the agent company (5 teams, 12 agents)', { size: 34 });
 text(X, Y + 46, 'You set goals and approve. The CEO plans, assigns, decides and reports. Agents talk through the CEO and shared memory, so every decision is logged.', { size: 16, color: '#495057' });
-const you = box(X + 560, Y + 100, 340, 80, '👤 YOU (founder)\nsets goals · approves plans · merges', { bg: C.pink, bold: true });
-const ceo = box(X + 560, Y + 240, 340, 110, '🧭 CEO agent (orchestrator)\nmain Claude Code session\nplans · assigns · triages · decides\nkeeps board + decision log', { bg: C.brass, bold: true, size: 16 });
+const you = box(X + 760, Y + 100, 340, 80, '👤 YOU (founder)\nsets goals · approves plans · merges', { bg: C.pink, bold: true });
+const ceo = box(X + 760, Y + 240, 340, 110, '🧭 CEO agent (orchestrator)\nmain Claude Code session\nplans · assigns · triages · decides\nkeeps board + decision log', { bg: C.brass, bold: true, size: 16 });
 arrow(you, ceo, 'goals / approval', { both: true });
 const depts = [
   ['🔎 Research', C.gray, [
@@ -158,9 +158,16 @@ const depts = [
     ['Real-User Tester', 'sandbox only\nnpm tarball install · follows\ndocs like a newcomer\n→ friction + bugs w/ steps', C.white],
     ['Field Tester', 'real environment\nreal server, real hook payloads,\nreal browser review flow\n→ end-to-end pass/fail', C.white],
   ]],
-  ['⚙️ Engineering', C.green, [
-    ['Developer', 'ONLY code writer\nown git worktree · tests per fix\nnpm test must pass\ncommits gated by Litti', C.white],
-    ['DevOps', 'CI · Docker · npm package ·\nRender blueprint · release\nchecklist · supply chain\n→ build + deploy health', C.white],
+  ['🏗️ Development', C.green, [
+    ['Tech Stack Architect', 'picks the best stack per layer\nevidence + benchmarks + cost\nmigration plan, no big-bang\n→ architecture decision records', C.white],
+    ['Backend Engineer', 'server, gate, tokens, receipts,\nintegrations · own worktree\ntests per change\nLitti-gated commits', C.white],
+    ['Frontend / UX Engineer', 'review page, inbox, Changes,\nIntegrations, docs site ·\naccessibility · mobile\nLitti-gated commits', C.white],
+    ['Developer (fix squad)', 'small approved fixes from\nQuality + Testing reports\ntests per fix · own worktree', C.white],
+    ['DevOps', 'CI · Docker · npm package ·\nRender · release · supply chain\n→ build + deploy health', C.white],
+  ]],
+  ['🚀 Founder\'s Office', C.violet, [
+    ['Product Manager', 'YC application · one-pager ·\npitch deck · roadmap ·\npricing · success metrics', C.white],
+    ['Growth Lead', 'positioning · landing page ·\nlaunch plan (HN, Product Hunt)\ncommunity · docs SEO', C.white],
   ]],
 ];
 let maxBottom = 0;
@@ -173,7 +180,7 @@ depts.forEach(([name, bg, members], i) => {
     maxBottom = Math.max(maxBottom, m.y + m.height);
   });
 });
-const mem = box(X + 260, maxBottom + 40, 980, 130, '🧠 Shared memory  (.swarm/ in the repo, git-ignored)\nboard.md — tasks, owner, status        decisions.md — every decision: who, why, alternatives\nmemory/<agent>.md — each agent\'s context, findings, decisions, open questions (survives sessions)\nreports/<run>/<agent>.md — raw output of each run', { bg: C.teal, size: 15, dashed: true });
+const mem = box(X + 360, maxBottom + 40, 1140, 130, '🧠 Shared memory  (.swarm/ in the repo, git-ignored)\nboard.md — tasks, owner, status        decisions.md — every decision: who, why, alternatives\nmemory/<agent>.md — each agent\'s context, findings, decisions, open questions (survives sessions)\nreports/<run>/<agent>.md — raw output of each run', { bg: C.teal, size: 15, dashed: true });
 
 // ─────────────────────────────── BOARD 4: WORKFLOW ───────────────────────────────
 X = 0; Y = mem.y + mem.height + 120;

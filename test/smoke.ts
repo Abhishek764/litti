@@ -169,6 +169,21 @@ try {
     assert.ok(stats.some((s: any) => s.approver === 'priya'));
   });
 
+  await step('static files: inbox, dashboard, favicon and brand assets serve; no path traversal', async () => {
+    const get = (url: string) => app.inject({ method: 'GET', url });
+    assert.match((await get('/')).headers['content-type'] as string, /text\/html/);
+    for (const [url, type] of [['/dashboard.html', /text\/html/], ['/favicon.svg', /image\/svg\+xml/], ['/brand/litti-logo.svg', /image\/svg\+xml/], ['/site.webmanifest', /manifest|json/]] as const) {
+      const r = await get(url);
+      assert.equal(r.statusCode, 200, url);
+      assert.match(r.headers['content-type'] as string, type, url);
+    }
+    for (const url of ['/../package.json', '/brand/../../package.json', '/%2e%2e/package.json', '/brand/%2e%2e%2f%2e%2e%2fpackage.json']) {
+      const r = await get(url);
+      assert.notEqual(r.statusCode, 200, url);
+      assert.doesNotMatch(r.body, /"name":\s*"litti"/, url);
+    }
+  });
+
   console.log(`\n✅ ${passed} checks passed`);
 } catch (err) {
   console.error(`\n❌ failed after ${passed} checks:`, err);

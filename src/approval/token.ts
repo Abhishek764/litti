@@ -16,14 +16,19 @@ function safeEqualHex(a: string, b: string): boolean {
   return timingSafeEqual(ba, bb);
 }
 
-/** Canonical bytes signed by the token. */
-function payload(tokenId: string, diffHash: string, approvers: string[]): string {
-  return `${tokenId}|${diffHash}|${approvers.slice().sort().join(',')}`;
+type Signed = Pick<ApprovalToken, 'tokenId' | 'actionId' | 'diffHash' | 'approvers' | 'issuedAt'>;
+
+/**
+ * Canonical bytes signed by the token (format v2). Covers which action it approves and when,
+ * so a token can't be re-labelled for another action or have its issue time moved.
+ */
+function payload(t: Signed): string {
+  return ['v2', t.tokenId, t.actionId, t.diffHash, t.issuedAt, t.approvers.slice().sort().join(',')].join('|');
 }
 
 /** Compute the HMAC signature for a token's core fields. */
-function sign(tokenId: string, diffHash: string, approvers: string[]): string {
-  return createHmac('sha256', secret()).update(payload(tokenId, diffHash, approvers)).digest('hex');
+function sign(t: Signed): string {
+  return createHmac('sha256', secret()).update(payload(t)).digest('hex');
 }
 
 /** SHA-256 hex of arbitrary text. Shared diff-hashing helper. */
@@ -33,17 +38,8 @@ export function sha256(text: string): string {
 
 /** Issue a signed approval token for an approved action. */
 export function createToken(actionId: string, diffHash: string, quizResults: QuizResult[]): ApprovalToken {
-  const tokenId = randomUUID();
-  const approvers = quizResults.map(q => q.approver);
-  return {
-    tokenId,
-    actionId,
-    diffHash,
-    approvers,
-    quizResults,
-    issuedAt: new Date().toISOString(),
-    signature: sign(tokenId, diffHash, approvers),
-  };
+  const core: Signed = { tokenId: randomUUID(), actionId, diffHash, approvers: quizResults.map(q => q.approver), issuedAt: new Date().toISOString() };
+  return { v: 2, ...core, quizResults, signature: sign(core) };
 }
 
 /** Validate a token against the current diff. Returns {valid, reason}. */
@@ -52,7 +48,10 @@ export function validateToken(
   currentDiff: string,
   requiredApprovers: number,
 ): { valid: boolean; reason: string } {
-  const expectedSig = sign(token.tokenId, token.diffHash, token.approvers);
+  // Tokens from before format v2 didn't sign the action id; they are no longer accepted.
+  if (token.v !== 2) return { valid: false, reason: 'Old token format — ask for a new approval' };
+  if (typeof token.signature !== 'string' || !Array.isArray(token.approvers)) return { valid: false, reason: 'Malformed token' };
+  const expectedSig = sign(token);
   if (!safeEqualHex(expectedSig, token.signature)) return { valid: false, reason: 'Signature mismatch' };
 
   if (!safeEqualHex(sha256(currentDiff), token.diffHash)) {

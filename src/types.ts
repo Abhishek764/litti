@@ -67,6 +67,8 @@ export interface QuizResult {
 
 /** Cryptographic token bound to the exact approved diff. */
 export interface ApprovalToken {
+  /** Token format. 2 = signature also covers actionId and issuedAt. */
+  v?: 2;
   tokenId: string;
   actionId: string;
   diffHash: string;

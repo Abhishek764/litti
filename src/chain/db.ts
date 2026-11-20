@@ -226,6 +226,18 @@ export function consumeToken(tokenId: string): boolean {
 }
 
 /** Undo a consumeToken reservation — used when the gated operation fails. */
+/**
+ * "Shipped" marks are separate from executor delivery: Litti's executor uses a token when it
+ * hands the action to your pipeline, and the pipeline then consumes it once when it ships.
+ */
+export function isShipped(tokenId: string): boolean {
+  return Boolean(getDb().prepare('SELECT token_id FROM consumed_tokens WHERE token_id = ?').get(`ship:${tokenId}`));
+}
+export function markShipped(tokenId: string): boolean {
+  return getDb().prepare('INSERT OR IGNORE INTO consumed_tokens (token_id, consumed_at) VALUES (?, ?)')
+    .run(`ship:${tokenId}`, new Date().toISOString()).changes === 1;
+}
+
 export function releaseToken(tokenId: string): void {
   getDb().prepare('DELETE FROM consumed_tokens WHERE token_id = ?').run(tokenId);
 }

@@ -22,7 +22,7 @@ import { appendReceipt, attentionScore } from '../chain/receipt.js';
 import { verifyChain } from '../chain/verify.js';
 import {
   insertPending, getPending, updatePending, allReceipts, corruptReceipt,
-  getSetting, setSetting, setApprovalToken, getApprovalToken, listPending, latestByDiffHash,
+  getSetting, setSetting, setApprovalToken, getApprovalToken, listPending, latestByDiffHash, isShipped, markShipped,
 } from '../chain/db.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -99,6 +99,20 @@ export function registerPending(card: ActionCard, baseUrl: string): { id: string
     try { void Promise.resolve(notifier?.postCard(card, { tier, reasons, requiredApprovers }, url)).catch(() => {}); } catch { /* best-effort */ }
   }
   return { id: card.id, url, tier };
+}
+
+/**
+ * Can a pipeline ship this diff with this token? The token must be for an approved action
+ * we know, match that action's diff, carry a valid v2 signature, and not have shipped before.
+ */
+function checkShippable(token: ApprovalToken, diff: string): { valid: boolean; reason: string } {
+  if (typeof token !== 'object' || token === null) return { valid: false, reason: 'Malformed token.' };
+  const p = getPending(String(token.actionId));
+  if (!p || p.status !== 'approved') return { valid: false, reason: 'Action is not approved.' };
+  if (token.diffHash !== p.actionCard.diffHash) return { valid: false, reason: 'Token is for a different change.' };
+  if (isShipped(String(token.tokenId))) return { valid: false, reason: 'Token already used to ship.' };
+  try { return validateToken(token, diff, p.requiredApprovers); }
+  catch { return { valid: false, reason: 'Malformed token.' }; }
 }
 
 /** Minimum review time for a tier. */
@@ -404,10 +418,18 @@ export function buildServer(opts: { logger?: boolean } = {}): FastifyInstance {
     if (!apiKeyOk(req.headers['x-litti-key'])) return reply.code(401).send({ ok: false, message: 'Invalid or missing x-litti-key header.' });
     const { token, diff } = req.body ?? {};
     if (!token || typeof diff !== 'string') return reply.code(400).send({ valid: false, reason: 'Required: token, diff.' });
-    const p = getPending(String(token.actionId));
-    if (!p || p.status !== 'approved') return { valid: false, reason: 'Action is not approved.' };
-    try { return validateToken(token, diff, p.requiredApprovers); }
-    catch { return { valid: false, reason: 'Malformed token.' }; }
+    return checkShippable(token, diff);
+  });
+
+  // Pipeline API: verify and use a token exactly once, right before shipping.
+  app.post<{ Body: { token?: ApprovalToken; diff?: string } }>('/api/tokens/consume', (req, reply) => {
+    if (!apiKeyOk(req.headers['x-litti-key'])) return reply.code(401).send({ ok: false, message: 'Invalid or missing x-litti-key header.' });
+    const { token, diff } = req.body ?? {};
+    if (!token || typeof diff !== 'string') return reply.code(400).send({ valid: false, reason: 'Required: token, diff.' });
+    const check = checkShippable(token, diff);
+    if (!check.valid) return reply.code(409).send(check);
+    if (!markShipped(String(token.tokenId))) return reply.code(409).send({ valid: false, reason: 'Token already used to ship.' });
+    return { valid: true, reason: 'Valid — consumed. Ship this exact diff now.' };
   });
 
   // Dashboard data.

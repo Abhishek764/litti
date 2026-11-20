@@ -140,31 +140,52 @@ cols.forEach(([title, bg, items], i) => {
 
 // ─────────────────────────────── BOARD 3: SWARM ORG ───────────────────────────────
 X = 0; Y = 1290;
-text(X, Y, '3 · Agent swarm (proposed) — who does what', { size: 34 });
-text(X, Y + 46, 'You set goals and approve. The CEO agent plans, assigns, decides and reports. Specialists only talk through the CEO + shared memory.', { size: 16, color: '#495057' });
+text(X, Y, '3 · Litti Labs — the agent company', { size: 34 });
+text(X, Y + 46, 'You set goals and approve. The CEO plans, assigns, decides and reports. Agents talk through the CEO and shared memory, so every decision is logged.', { size: 16, color: '#495057' });
 const you = box(X + 560, Y + 100, 340, 80, '👤 YOU (founder)\nsets goals · approves plans · merges', { bg: C.pink, bold: true });
 const ceo = box(X + 560, Y + 240, 340, 110, '🧭 CEO agent (orchestrator)\nmain Claude Code session\nplans · assigns · triages · decides\nkeeps board + decision log', { bg: C.brass, bold: true, size: 16 });
 arrow(you, ceo, 'goals / approval', { both: true });
-const sec = box(X + 0, Y + 430, 330, 170, '🛡️ Security Auditor\nREAD-ONLY\nthreat model · OWASP · auth/CSRF/\nSSRF/crypto/injection · supply chain\n→ findings w/ severity + repro', { bg: C.red, size: 15 });
-const slop = box(X + 370, Y + 430, 330, 170, '🧹 Slop Hunter\nREAD-ONLY\ndead code · duplication · AI-slop\nwording · misleading docs ·\nover-engineering · naming\n→ findings w/ file:line', { bg: C.orange, size: 15 });
-const user = box(X + 740, Y + 430, 330, 170, '🧪 Real-User Tester\ninstalls from npm tarball in sandbox\nfollows docs like a newcomer\ndrives browser + Claude hook\n→ friction + bugs w/ steps', { bg: C.blue, size: 15 });
-const dev = box(X + 1110, Y + 430, 330, 170, '🛠️ Developer\nWRITE (own git worktree)\nfixes approved findings + tests\nnpm test must pass\ncommits gated by Litti itself', { bg: C.green, size: 15 });
-[sec, slop, user, dev].forEach(a => arrow(ceo, a, '', { both: true, side: 'v' }));
-const mem = box(X + 260, Y + 680, 940, 140, '🧠 Shared memory  (.swarm/ in the repo, git-ignored)\nboard.md — tasks, owner, status       decisions.md — every decision: who, why, alternatives\nmemory/<agent>.md — each agent\'s context, findings, decisions, open questions (survives sessions)\nreports/<run>/<agent>.md — raw output of each run', { bg: C.teal, size: 15, dashed: true });
-[sec, slop, user, dev].forEach(a => arrow(a, mem, '', { dashed: true, both: true, side: 'v' }));
-arrow(ceo, mem, '', { dashed: true, both: true, side: 'v' });
+const depts = [
+  ['🔎 Research', C.gray, [
+    ['Researcher', 'READ-ONLY + web\ncompetitors · market gaps\nverifies vendor docs (Claude,\nCodex, Slack, Jira APIs)\n→ briefs + recommendations', C.white],
+  ]],
+  ['🛡️ Quality', C.red, [
+    ['Security Auditor', 'READ-ONLY\nthreat model · OWASP · auth ·\nCSRF/SSRF · crypto · supply chain\n→ findings w/ severity + repro', C.white],
+    ['Slop Hunter', 'READ-ONLY\ndead code · duplication ·\nAI-slop wording · misleading docs\n→ findings w/ file:line', C.white],
+    ['QA Engineer', 'READ-ONLY (runs tests)\ncoverage gaps · edge cases ·\ntest plan · verifies each fix\n→ missing tests + bugs', C.white],
+  ]],
+  ['🧪 Testing', C.blue, [
+    ['Real-User Tester', 'sandbox only\nnpm tarball install · follows\ndocs like a newcomer\n→ friction + bugs w/ steps', C.white],
+    ['Field Tester', 'real environment\nreal server, real hook payloads,\nreal browser review flow\n→ end-to-end pass/fail', C.white],
+  ]],
+  ['⚙️ Engineering', C.green, [
+    ['Developer', 'ONLY code writer\nown git worktree · tests per fix\nnpm test must pass\ncommits gated by Litti', C.white],
+    ['DevOps', 'CI · Docker · npm package ·\nRender blueprint · release\nchecklist · supply chain\n→ build + deploy health', C.white],
+  ]],
+];
+let maxBottom = 0;
+depts.forEach(([name, bg, members], i) => {
+  const dx = X + i * 380;
+  const head = box(dx, Y + 410, 340, 60, name, { bg, size: 22, bold: true });
+  arrow(ceo, head, '', { both: true, side: 'v' });
+  members.forEach(([title, desc, mbg], j) => {
+    const m = box(dx, Y + 500 + j * 175, 340, 155, `${title}\n${desc}`, { bg: mbg, size: 15 });
+    maxBottom = Math.max(maxBottom, m.y + m.height);
+  });
+});
+const mem = box(X + 260, maxBottom + 40, 980, 130, '🧠 Shared memory  (.swarm/ in the repo, git-ignored)\nboard.md — tasks, owner, status        decisions.md — every decision: who, why, alternatives\nmemory/<agent>.md — each agent\'s context, findings, decisions, open questions (survives sessions)\nreports/<run>/<agent>.md — raw output of each run', { bg: C.teal, size: 15, dashed: true });
 
 // ─────────────────────────────── BOARD 4: WORKFLOW ───────────────────────────────
-X = 0; Y = 2200;
+X = 0; Y = mem.y + mem.height + 120;
 text(X, Y, '4 · One swarm run — step by step', { size: 34 });
 text(X, Y + 46, 'Read-only agents run in parallel. Nothing changes until YOU approve the plan. Every code change still goes through Litti review.', { size: 16, color: '#495057' });
 const steps = [
-  ['1 Discover', 'Auditor, Slop Hunter\nand Tester run in\nparallel (read-only)', C.gray],
+  ['1 Discover', 'Research, Quality,\nTesting + DevOps audit\nin parallel (read-only)', C.gray],
   ['2 Triage', 'CEO merges findings,\nranks by severity,\nlogs decisions', C.brass],
   ['3 YOU approve', 'review the plan:\ncut, reorder, add', C.pink],
-  ['4 Build', 'Developer fixes in\na worktree, tests\neach fix, gated commits', C.green],
-  ['5 Re-verify', 'Auditor + Tester\ncheck every fix\nfor regressions', C.blue],
-  ['6 Release', 'CEO report,\nyou merge,\nnpm publish + push', C.violet],
+  ['4 Build', 'Developer + DevOps\nfix in a worktree,\ntests for each fix', C.green],
+  ['5 Re-verify', 'QA, Security and\nField Tester check\nevery fix', C.blue],
+  ['6 Release', 'CEO report, you merge,\nDevOps ships:\nnpm publish + push', C.violet],
 ];
 let prev = null;
 steps.forEach(([t, d, bg], i) => {

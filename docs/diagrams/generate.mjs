@@ -125,12 +125,12 @@ X = 0; Y = 800;
 text(X, Y, '2 · Tech stack', { size: 34 });
 text(X, Y + 46, 'Small, boring, auditable. One process + one SQLite file. No AI in the trust path.', { size: 16, color: '#495057' });
 const cols = [
-  ['Runtime', C.brass, ['Node.js 20.10+', 'TypeScript (strict)', 'ESM modules', 'npm package: litti (bin: litti)']],
+  ['Runtime', C.brass, ['Node.js 22+', 'TypeScript (strict)', 'ESM modules', 'npm package: litti (bin: litti)']],
   ['Server', C.orange, ['Fastify 5', 'better-sqlite3 (WAL)', 'dotenv · open', 'Docker (2-stage) · Render']],
   ['Security', C.green, ['Node crypto only', 'HMAC-SHA256 tokens/stamps', 'AES-256-GCM secrets', 'SHA-256 hash chain']],
   ['UI', C.blue, ['Plain HTML/CSS/JS', 'No framework, no build', 'Inbox · Review · Changes', 'Integrations · Docs · Dashboard']],
   ['Integrations', C.violet, ['Claude Code / Codex hooks', 'OpenCode plugin', 'Slack · Discord · Jira APIs', 'OAuth via Litti Connect']],
-  ['Quality', C.teal, ['tsx test suites (12)', '~120 checks', 'GitHub Actions CI', 'Node 20 + 22']],
+  ['Quality', C.teal, ['tsx test suites (12)', '~120 checks', 'GitHub Actions CI', 'Node 22 / 24 / 26 × 3 OS']],
 ];
 cols.forEach(([title, bg, items], i) => {
   const cx0 = X + i * 260;

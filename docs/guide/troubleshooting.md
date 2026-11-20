@@ -2,7 +2,7 @@
 
 ## Installing and starting
 
-**`npm install` fails building `better-sqlite3`.** Use Node 20.10 or newer. On Windows, install the Visual Studio Build Tools with "Desktop development with C++". On Linux, install `build-essential` and `python3`.
+**`npm install` fails building `better-sqlite3`.** Use Node 22 or newer: better-sqlite3 has prebuilt binaries for Node 22, 24 and 26 on Windows, macOS and Linux (x64 and arm64), so a source build should only happen on other versions or platforms. If it still builds from source: on Windows, install the Visual Studio Build Tools with "Desktop development with C++". On Linux, install `build-essential` and `python3`.
 
 **Litti refuses to start: "SECRET_KEY must be at least 32 random characters".** `litti` creates one on first run in `~/.litti/config.env`; if you edited it, put back a long random value:
 

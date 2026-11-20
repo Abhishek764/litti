@@ -9,7 +9,7 @@
 
 [![CI](https://github.com/Abhishek764/litti/actions/workflows/ci.yml/badge.svg)](https://github.com/Abhishek764/litti/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Node 20+](https://img.shields.io/badge/node-%E2%89%A520.10-339933.svg)](https://nodejs.org)
+[![Node 22+](https://img.shields.io/badge/node-%E2%89%A522-339933.svg)](https://nodejs.org)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
 [Quick start](#quick-start) · [How it works](#how-it-works) · [Use it with Claude Code](#use-it-with-your-coding-agent) · [Slack, Discord, Jira](#tell-your-team) · [Docs](docs/guide/index.md)
@@ -51,7 +51,7 @@ Approvals are bound to the exact diff and chained into receipts anyone can verif
 
 ## Quick start
 
-You need **Node.js 20.10+**.
+You need **Node.js 22+**.
 
 ```bash
 npm install -g litti

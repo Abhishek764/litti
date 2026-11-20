@@ -4,7 +4,7 @@ Litti runs on your machine (or a server) as one command. Installing takes about 
 
 ## What you need
 
-- **Node.js 20.10 or newer.** Check with `node --version`. Get it from [nodejs.org](https://nodejs.org).
+- **Node.js 22 or newer.** Check with `node --version`. Get it from [nodejs.org](https://nodejs.org).
 - **Git**, for the Changes view and agent hooks.
 - Windows, macOS or Linux.
 

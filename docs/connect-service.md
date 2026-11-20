@@ -20,7 +20,7 @@ It sends results back only to Litti on the same computer (`http://127.0.0.1` or 
 2. When it's live, copy its URL, for example `https://litti-connect.onrender.com`.
 3. In the service's **Environment**, set `LITTI_BROKER_URL` to that URL. Leave the app variables for now.
 
-Any Node 20+ host works the same way: `npm ci && npm run build`, then `node dist/broker/server.js` with the environment variables below.
+Any Node 22+ host works the same way: `npm ci && npm run build`, then `node dist/broker/server.js` with the environment variables below.
 
 ## 2. Register the three apps (once)
 

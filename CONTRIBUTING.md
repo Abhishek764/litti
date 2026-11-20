@@ -12,7 +12,7 @@ npm test          # typecheck + end-to-end smoke test
 npm run demo      # full standalone demo in your browser
 ```
 
-Requires Node.js 20.10+. Nothing else: the demo runs entirely on your machine.
+Requires Node.js 22+. Nothing else: the demo runs entirely on your machine.
 
 ## Project layout
 

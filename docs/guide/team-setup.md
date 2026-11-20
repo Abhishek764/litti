@@ -9,7 +9,7 @@ cp .env.example .env
 docker compose up -d
 ```
 
-Or `npm install -g litti && litti --no-open` on any machine with Node 20.10+. Data lives in `LITTI_DB_PATH` (`~/.litti/litti.db` for the `litti` command, `/data/litti.db` in Docker). Back that file up.
+Or `npm install -g litti && litti --no-open` on any machine with Node 22+. Data lives in `LITTI_DB_PATH` (`~/.litti/litti.db` for the `litti` command, `/data/litti.db` in Docker). Back that file up.
 
 ## 2. Set the secrets
 

@@ -14,6 +14,7 @@ export function verifyChain(): VerifyResult[] {
 
   for (const r of receipts) {
     const recomputed = computeChainHash({
+      format: r.format,
       id: r.id,
       previousHash: r.previousHash,
       actionCard: r.actionCard,

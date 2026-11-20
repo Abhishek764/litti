@@ -63,6 +63,8 @@ export function initDb(path = 'litti.db'): Database.Database {
   const cols = (db.prepare('PRAGMA table_info(pending_actions)').all() as { name: string }[]).map(c => c.name);
   if (!cols.includes('approval_token')) db.exec('ALTER TABLE pending_actions ADD COLUMN approval_token TEXT');
   if (!cols.includes('challenge')) db.exec('ALTER TABLE pending_actions ADD COLUMN challenge TEXT');
+  const rcols = (db.prepare('PRAGMA table_info(receipts)').all() as { name: string }[]).map(c => c.name);
+  if (!rcols.includes('format')) db.exec('ALTER TABLE receipts ADD COLUMN format INTEGER');
   return db;
 }
 
@@ -76,8 +78,8 @@ export function getDb(): Database.Database {
 export function insertReceipt(r: Receipt): void {
   const seq = (getDb().prepare('SELECT COUNT(*) AS n FROM receipts').get() as { n: number }).n;
   getDb().prepare(
-    `INSERT INTO receipts (id, previous_hash, action_card, tier, approvals, outcome, attention_score, chain_hash, created_at, seq)
-     VALUES (@id, @previousHash, @actionCard, @tier, @approvals, @outcome, @attentionScore, @chainHash, @timestamp, @seq)`
+    `INSERT INTO receipts (id, previous_hash, action_card, tier, approvals, outcome, attention_score, chain_hash, created_at, seq, format)
+     VALUES (@id, @previousHash, @actionCard, @tier, @approvals, @outcome, @attentionScore, @chainHash, @timestamp, @seq, @format)`
   ).run({
     id: r.id,
     previousHash: r.previousHash,
@@ -89,6 +91,7 @@ export function insertReceipt(r: Receipt): void {
     chainHash: r.chainHash,
     timestamp: r.timestamp,
     seq,
+    format: r.format ?? null,
   });
 }
 
@@ -106,6 +109,7 @@ export function lastReceipt(): Receipt | null {
 
 function rowToReceipt(row: any): Receipt {
   return {
+    ...(row.format === 2 ? { format: 2 as const } : {}),
     id: row.id,
     previousHash: row.previous_hash,
     actionCard: JSON.parse(row.action_card),

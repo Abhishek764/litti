@@ -82,6 +82,8 @@ export type Outcome = 'approved' | 'rejected' | 'rubber-stamped' | 'auto-approve
 
 /** A hash-chained decision record. */
 export interface Receipt {
+  /** Hash format. 2 = also covers tier, approvals and timestamp. Missing = 1 (older receipts). */
+  format?: 2;
   id: string;
   previousHash: string;
   actionCard: ActionCard;

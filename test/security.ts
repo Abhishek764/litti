@@ -72,6 +72,26 @@ try {
     } finally { delete process.env.LITTI_API_KEY; delete process.env.LITTI_IDENTITY_HEADER; }
   });
 
+  await step('0.5.4 editing a receipt\'s tier, approvals or time breaks the chain; old receipts still verify', async () => {
+    const { getDb } = await import('../src/chain/db.js');
+    const { verifyChain } = await import('../src/chain/verify.js');
+    const { computeChainHash } = await import('../src/chain/receipt.js');
+    assert.ok(verifyChain().every(r => r.valid), 'chain starts intact');
+    const last = getDb().prepare('SELECT id FROM receipts ORDER BY seq DESC LIMIT 1').get() as { id: string };
+    assert.equal((getDb().prepare('SELECT format FROM receipts WHERE id = ?').get(last.id) as any).format, 2, 'new receipts are format 2');
+    for (const [col, val] of [['tier', 0], ['approvals', '[]'], ['created_at', '2000-01-01T00:00:00.000Z'], ['format', null]] as const) {
+      const before = getDb().prepare(`SELECT ${col} AS v FROM receipts WHERE id = ?`).get(last.id) as { v: unknown };
+      getDb().prepare(`UPDATE receipts SET ${col} = ? WHERE id = ?`).run(val, last.id);
+      assert.equal(verifyChain().find(r => r.id === last.id)!.valid, false, `editing ${col} is detected`);
+      getDb().prepare(`UPDATE receipts SET ${col} = ? WHERE id = ?`).run(before.v, last.id);
+    }
+    assert.ok(verifyChain().every(r => r.valid), 'restored');
+    // A format-1 receipt (written by an older Litti) still verifies with its own rule.
+    const legacy = { id: 'legacy', previousHash: 'p', actionCard: { a: 1 } as any, tier: 1 as const, approvals: [], outcome: 'approved' as const, attentionScore: 50, timestamp: 't' };
+    assert.equal(computeChainHash(legacy), computeChainHash({ ...legacy, tier: 3, timestamp: 'changed' }), 'v1 ignores tier/time (as before)');
+    assert.notEqual(computeChainHash({ ...legacy, format: 2 }), computeChainHash({ ...legacy, format: 2, tier: 3 }), 'v2 covers tier');
+  });
+
   await step('0.5.10 the tamper button only exists in demo mode', async () => {
     assert.equal((await app.inject({ method: 'GET', url: '/api/meta' })).json().demo, false);
     assert.equal((await app.inject({ method: 'POST', url: '/api/demo/break-chain', payload: {} })).statusCode, 404);

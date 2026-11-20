@@ -10,9 +10,11 @@ const GENESIS = '0'.repeat(64);
 export function computeChainHash(r: Omit<Receipt, 'chainHash'>): string {
   // Delimited with a byte that cannot appear in hex/JSON field values, so no
   // field boundary is ambiguous (prevents concatenation collisions).
-  return sha256(
-    [r.id, r.previousHash, JSON.stringify(r.actionCard), r.outcome, r.attentionScore.toString()].join('\x1f'),
-  );
+  const v1 = [r.id, r.previousHash, JSON.stringify(r.actionCard), r.outcome, r.attentionScore.toString()];
+  // Format 2 also covers the tier, every approval (who, answer, time) and when it happened.
+  // Older receipts keep verifying with the format they were written in.
+  const fields = r.format === 2 ? ['v2', ...v1, String(r.tier), JSON.stringify(r.approvals), r.timestamp] : v1;
+  return sha256(fields.join('\x1f'));
 }
 
 /** Attention score 0-100 from quiz, scroll, and time spent. */
@@ -39,6 +41,7 @@ export function appendReceipt(args: {
 }): Receipt {
   const prev = lastReceipt();
   const base: Omit<Receipt, 'chainHash'> = {
+    format: 2,
     id: randomUUID(),
     previousHash: prev ? prev.chainHash : GENESIS,
     actionCard: args.actionCard,

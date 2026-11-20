@@ -21,7 +21,7 @@
     "litti": "tsx src/cli.ts",
     "typecheck": "tsc --noEmit",
     "test": "tsc --noEmit && tsx test/smoke.ts && tsx test/production.ts && tsx test/cli.ts && tsx test/notify.ts && tsx test/challenges.ts && tsx test/changes.ts && tsx test/hooks.ts && tsx test/connect.ts && tsx test/docs.ts && tsx test/broker.ts && tsx test/security.ts",
-    "build": "tsc -p tsconfig.build.json",
+    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json",
     "prepack": "npm run build"
   },
   "dependencies": {

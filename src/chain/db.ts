@@ -9,6 +9,11 @@ let db: Database.Database;
 /** Set true only by the demo entrypoint. Gates the tamper injector. */
 let tamperAllowed = false;
 
+/** True only in `litti demo`: shows the Break-chain button and allows the tamper injector. */
+export function demoMode(): boolean {
+  return tamperAllowed;
+}
+
 /** Enable the DEMO-ONLY chain tamper injector. Call only from demo code. */
 export function enableDemoTamper(): void {
   tamperAllowed = true;

@@ -59,6 +59,23 @@ try {
     assert.equal((await verify(forged)).valid, false, 'token for a different diff');
     assert.equal((await verify('nonsense')).valid, false);
   });
+  await step('0.5.1 receipts, stats and chain verify need the API key or a signed-in reviewer', async () => {
+    process.env.LITTI_API_KEY = 'agent-key';
+    process.env.LITTI_IDENTITY_HEADER = 'x-forwarded-email';
+    try {
+      for (const url of ['/api/receipts', '/api/stats', '/api/chain/verify']) {
+        assert.equal((await app.inject({ method: 'GET', url })).statusCode, 401, `${url} anonymous`);
+        assert.equal((await app.inject({ method: 'GET', url, headers: { 'x-litti-key': 'wrong' } })).statusCode, 401, `${url} wrong key`);
+        assert.equal((await app.inject({ method: 'GET', url, headers: { 'x-litti-key': 'agent-key' } })).statusCode, 200, `${url} agent`);
+        assert.equal((await app.inject({ method: 'GET', url, headers: { 'x-forwarded-email': 'ana@acme.test' } })).statusCode, 200, `${url} SSO reviewer`);
+      }
+    } finally { delete process.env.LITTI_API_KEY; delete process.env.LITTI_IDENTITY_HEADER; }
+  });
+
+  await step('0.5.10 the tamper button only exists in demo mode', async () => {
+    assert.equal((await app.inject({ method: 'GET', url: '/api/meta' })).json().demo, false);
+    assert.equal((await app.inject({ method: 'POST', url: '/api/demo/break-chain', payload: {} })).statusCode, 404);
+  });
 } finally { await app.close(); }
 
 console.log(`\nsecurity: ${passed} passed`);

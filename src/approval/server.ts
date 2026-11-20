@@ -21,7 +21,7 @@ import { execute } from '../deploy/executor.js';
 import { appendReceipt, attentionScore } from '../chain/receipt.js';
 import { verifyChain } from '../chain/verify.js';
 import {
-  insertPending, getPending, updatePending, allReceipts, corruptReceipt,
+  insertPending, getPending, updatePending, allReceipts, corruptReceipt, demoMode,
   getSetting, setSetting, setApprovalToken, getApprovalToken, listPending, latestByDiffHash, isShipped, markShipped,
 } from '../chain/db.js';
 
@@ -433,12 +433,18 @@ export function buildServer(opts: { logger?: boolean } = {}): FastifyInstance {
   });
 
   // Dashboard data.
-  app.get('/api/receipts', () => allReceipts().slice().reverse());
-  app.get('/api/chain/verify', () => verifyChain());
-  app.get('/api/stats', () => computeStats());
+  // Receipts contain full diffs: only agents with the API key, or people allowed into the inbox.
+  const evidenceAllowed = (h: Record<string, unknown>) =>
+    (process.env.LITTI_API_KEY && h['x-litti-key'] !== undefined ? apiKeyOk(h['x-litti-key']) : false) || inboxAllowed(h);
+  const denyEvidence = (reply: any) => reply.code(401).send({ ok: false, message: 'Sign in (SSO) or send x-litti-key to read receipts.' });
+  app.get('/api/receipts', (req, reply) => (evidenceAllowed(req.headers) ? allReceipts().slice().reverse() : denyEvidence(reply)));
+  app.get('/api/chain/verify', (req, reply) => (evidenceAllowed(req.headers) ? verifyChain() : denyEvidence(reply)));
+  app.get('/api/stats', (req, reply) => (evidenceAllowed(req.headers) ? computeStats() : denyEvidence(reply)));
+  app.get('/api/meta', () => ({ demo: demoMode() }));
 
   // DEMO-ONLY: corrupt a receipt so Verify Chain visibly breaks. Disabled unless demo mode.
-  app.post<{ Body: { id?: string } }>('/api/demo/break-chain', (req) => {
+  app.post<{ Body: { id?: string } }>('/api/demo/break-chain', (req, reply) => {
+    if (!demoMode()) return reply.code(404).send({ ok: false, message: 'Not found.' });
     const receipts = allReceipts();
     const target = req.body?.id ?? receipts[Math.floor(receipts.length / 2)]?.id;
     if (!target) return { ok: false, message: 'No receipts to corrupt.' };

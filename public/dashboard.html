@@ -49,7 +49,7 @@ button.danger{background:transparent;color:var(--red);border:1px solid var(--red
   <div class="toolbar">
     <button id="verify">Verify Chain</button>
     <span id="verifyResult"></span>
-    <button class="danger" id="break" style="margin-left:auto">Break Chain (Demo)</button>
+    <button class="danger" id="break" style="margin-left:auto;display:none">Break Chain (Demo)</button>
   </div>
 
   <div class="grid">
@@ -70,10 +70,9 @@ const OUTCOME={'approved':'var(--green)','rejected':'var(--red)','rubber-stamped
 
 async function load(){
   try{
-    const [receipts,stats]=await Promise.all([
-      fetch('/api/receipts').then(r=>r.json()),
-      fetch('/api/stats').then(r=>r.json())
-    ]);
+    const [rr,sr]=await Promise.all([fetch('/api/receipts'),fetch('/api/stats')]);
+    if(rr.status===401||sr.status===401){document.querySelector('.sub').textContent='🔒 Sign in through your SSO proxy to see receipts.';return;}
+    const [receipts,stats]=await Promise.all([rr.json(),sr.json()]);
     renderReceipts(receipts);
     renderStats(stats);
   }catch(e){
@@ -147,6 +146,8 @@ document.getElementById('break').addEventListener('click',async()=>{
   }catch(e){console.error(e);out.textContent='Break failed';out.style.color='var(--red)';}
 });
 
+// "Break chain" is a demo-only teaching tool: show it only when Litti runs as `litti demo`.
+fetch('/api/meta').then(r=>r.json()).then(m=>{if(m&&m.demo)document.getElementById('break').style.display='';}).catch(()=>{});
 load();
 </script>
 </body>

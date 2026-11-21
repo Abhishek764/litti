@@ -15,7 +15,8 @@ import { issueViewStamp } from '../src/approval/identity.js';
 import { sampleAnswer } from '../src/agents/challenges.js';
 import { classify, extractCommand, gate } from '../src/integrations/gate.js';
 import { runHook } from '../src/integrations/hook-cli.js';
-import { install, mergeHooks, hookPaths } from '../src/integrations/install.js';
+import { install, mergeHooks, hookPaths, hookCommand, claudeHook, gitBashPath } from '../src/integrations/install.js';
+import { createServer } from 'node:http';
 
 const repo = mkdtempSync(join(tmpdir(), 'litti-hooks-repo-'));
 const git = (...a: string[]) => execFileSync('git', ['-C', repo, ...a], { stdio: 'pipe' }).toString();
@@ -195,6 +196,40 @@ try {
     } finally { rmSync(proj, { recursive: true, force: true }); rmSync(home, { recursive: true, force: true }); }
   });
 
+  await step('installed hook fails closed: shell form via bash, exec form, missing hook = exit 2', async () => {
+    const bash = process.platform === 'win32' ? gitBashPath() : 'bash';
+    const payload = JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'git push' }, cwd: repo });
+    const env = { ...process.env, LITTI_URL: 'http://127.0.0.1:9' };
+    if (bash) {
+      const ok = await runAsync(bash, ['-c', hookCommand('claude')], payload, { env });
+      assert.equal(ok.status, 0, ok.stderr);
+      assert.equal(JSON.parse(ok.stdout).hookSpecificOutput.permissionDecision, 'deny');
+      const gone = hookCommand('claude', join(tmpdir(), 'litti-moved-away'));
+      const broken = await runAsync(bash, ['-c', gone], payload, { env });
+      assert.equal(broken.status, 2, 'a hook that cannot start exits 2 (blocking), not 1 (fail open)');
+    } else console.log('    (no bash found: shell-form check skipped)');
+    const h = claudeHook(undefined, true);
+    const exec = await runAsync(String(h.command), h.args as string[], payload, { env });
+    assert.equal(JSON.parse(exec.stdout).hookSpecificOutput.permissionDecision, 'deny', 'exec form runs without a shell');
+  });
+
+  await step('hook deadline: a hanging server ends in a deny, well before the agent timeout', async () => {
+    const hang = createServer(() => { /* never answers */ });
+    await new Promise<void>(r => hang.listen(0, '127.0.0.1', () => r()));
+    const port = (hang.address() as { port: number }).port;
+    try {
+      const { tsx, hook } = hookPaths();
+      const t0 = Date.now();
+      const r = await runAsync(process.execPath, [tsx, hook, 'claude'], JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'git push' }, cwd: repo }),
+        { env: { ...process.env, LITTI_URL: `http://127.0.0.1:${port}`, LITTI_HOOK_DEADLINE_MS: '2500' } });
+      assert.equal(r.status, 0, r.stderr);
+      const d = JSON.parse(r.stdout).hookSpecificOutput;
+      assert.equal(d.permissionDecision, 'deny');
+      assert.match(d.permissionDecisionReason, /could not decide within/);
+      assert.ok(Date.now() - t0 < 7500, 'ended by the deadline, not the 8 s fetch timeout');
+    } finally { hang.closeAllConnections(); hang.close(); }
+  });
+
   await step('install: merges into existing config, never duplicates, writes all three', () => {
     const proj = mkdtempSync(join(tmpdir(), 'litti-install-'));
     try {
@@ -206,13 +241,22 @@ try {
       assert.equal(s.model, 'x', 'other settings kept');
       assert.deepEqual(s.hooks.Stop, []);
       assert.equal(s.hooks.PreToolUse.length, 2, 'own hook kept, Litti added once');
-      const litti = s.hooks.PreToolUse.find((g: any) => g.matcher === 'Bash');
-      assert.match(litti.hooks[0].command, /hook-cli\.ts" claude$/);
+      const litti = s.hooks.PreToolUse.find((g: any) => /hook-cli/.test(g.hooks[0].command));
+      assert.match(litti.hooks[0].command, /hook-cli\.ts" claude \|\| exit 2$/, 'shell form fails closed');
+      assert.equal(litti.hooks[0].onFailure, 'block', 'Claude Code blocks on hook failure/timeout');
+
+      install('claude', proj, undefined, { execForm: true });
+      const ex = JSON.parse(readFileSync(join(proj, '.claude', 'settings.json'), 'utf8')).hooks.PreToolUse;
+      assert.equal(ex.length, 2, 'exec-form entry replaces the shell-form one');
+      const exh = ex.find((g: any) => g.hooks[0].command === 'node').hooks[0];
+      assert.deepEqual(exh.args.slice(-1), ['claude']);
+      assert.equal(exh.onFailure, 'block');
 
       install('codex', proj);
       const c = JSON.parse(readFileSync(join(proj, '.codex', 'hooks.json'), 'utf8'));
       assert.equal(c.hooks.PreToolUse.length, 1);
-      assert.match(c.hooks.PreToolUse[0].hooks[0].command, /codex$/);
+      assert.equal(c.hooks.PreToolUse[0].matcher, '^Bash$');
+      assert.match(c.hooks.PreToolUse[0].hooks[0].command, /codex \|\| exit 2$/);
 
       install('opencode', proj);
       const plugin = readFileSync(join(proj, '.opencode', 'plugin', 'litti.ts'), 'utf8');

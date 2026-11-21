@@ -81,7 +81,8 @@ try {
   // The real `litti` entry (src/main.ts) with its own LITTI_HOME: help and bad flags must never start a server.
   const entry = (home: string, args: string[], until?: RegExp) => new Promise<{ code: number | null; out: string; started: boolean }>((resolve) => {
     const child = spawn(process.execPath, ['--import', 'tsx', 'src/main.ts', ...args], {
-      env: { ...env, LITTI_HOME: home, CI: '1', LITTI_SKIP_CWD_ENV: '1', APPROVAL_SERVER_PORT: fallbackPort, LITTI_URL: '' },
+      // Local mode, like a user's first `litti`: no inherited API key (team mode would require PUBLIC_URL).
+      env: { ...env, LITTI_HOME: home, CI: '1', LITTI_SKIP_CWD_ENV: '1', APPROVAL_SERVER_PORT: fallbackPort, LITTI_URL: '', LITTI_API_KEY: '' },
     });
     let out = '';
     let started = false;

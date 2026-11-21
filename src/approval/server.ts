@@ -128,8 +128,9 @@ async function deliverApproved(p: PendingAction, approvals: ApprovalSubmission[]
   const attention = Math.round(approvals.reduce((s, a) => s + attentionScore(card, true, a.scrolledToBottom, a.timeSpentMs), 0) / Math.max(approvals.length, 1));
   updatePending(p.id, approvals, result.ok ? 'approved' : 'deploy-failed');
   appendReceipt({ actionCard: card, tier: p.tier, approvals, outcome: result.ok ? 'approved' : 'deploy-failed', attentionScore: attention });
-  const message = result.ok ? result.message
-    : `${result.message}. Nothing ran. Fix the pipeline, then retry: POST /api/actions/${p.id}/retry (admin key).`;
+  // A gate action (commit, push, rm -rf…) is run by the agent, not by Litti: say "approved".
+  const message = result.ok ? (p.source === 'gate' ? '✅ Approved. Tell the agent to run the same command again; it will be allowed once.' : result.message)
+    :`${result.message}. Nothing ran. Fix the pipeline, then retry: POST /api/actions/${p.id}/retry (admin key).`;
   return { ok: result.ok, message, attention };
 }
 

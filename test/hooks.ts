@@ -33,7 +33,8 @@ const URL_ = `http://127.0.0.1:${typeof addr === 'object' && addr ? addr.port : 
 const opts = { url: URL_, agent: 'claude-code' };
 
 /** Pass every required review on an action, as distinct human reviewers. */
-async function approve(id: string) {
+async function approve(id: string): Promise<string> {
+  let message = '';
   for (const who of ['rev-ana', 'rev-bo', 'rev-cy']) {
     const p = getPending(id)!;
     if (p.status !== 'pending') break;
@@ -42,8 +43,10 @@ async function approve(id: string) {
       payload: { approver: who, quizAnswer: sampleAnswer(p), scrolledToBottom: true, timeSpentMs: 45000, viewStamp: issueViewStamp(id, Date.now() - 45000) },
     })).json();
     assert.equal(r.ok, true, r.message);
+    message = r.message;
   }
   assert.equal(getPending(id)!.status, 'approved');
+  return message;
 }
 
 /** Run a process without blocking this event loop (the test server must keep answering). */
@@ -118,7 +121,9 @@ try {
   });
 
   await step('after approval: the same command runs exactly once', async () => {
-    await approve(firstId);
+    const msg = await approve(firstId);
+    assert.match(msg, /✅ Approved/, 'a gate command is approved, not "deployed" by Litti');
+    assert.doesNotMatch(msg, /Deploy executed/);
     const ok = await gate('git push origin main', repo, opts);
     assert.equal(ok.decision, 'allow', ok.reason);
     const twice = await gate('git push origin main', repo, opts);
@@ -140,6 +145,8 @@ try {
     const down = await gate('git push', repo, { url: 'http://127.0.0.1:9', agent: 'x' });
     assert.equal(down.decision, 'deny');
     assert.match(down.reason, /unreachable/);
+    assert.match(down.reason, /run `litti`/, 'installed users start Litti with `litti`');
+    assert.doesNotMatch(down.reason, /npm start/);
     assert.equal((await gate('git push', repo, { url: 'http://127.0.0.1:9', agent: 'x', failOpen: true })).decision, 'allow');
   });
 

@@ -120,7 +120,7 @@ export async function gate(command: string, cwd: string, opts: GateOptions = {})
     if (failOpen) return { decision: 'allow', reason: `Litti unreachable (${(err as Error).message}); allowed because LITTI_HOOK_FAIL_OPEN=true.` };
     return {
       decision: 'deny',
-      reason: `🔒 Litti blocked "${command.slice(0, 120)}" (${c.why}): the Litti server at ${url} is unreachable, so this can't be reviewed. Ask the human to start Litti (npm start), then try again. Do not work around this block.`,
+      reason: `🔒 Litti blocked "${command.slice(0, 120)}" (${c.why}): the Litti server at ${url} is unreachable, so this can't be reviewed. Ask the human to start Litti (run \`litti\`), then try again. Do not work around this block.`,
     };
   }
 

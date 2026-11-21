@@ -152,12 +152,36 @@ function inboxAllowed(headers: Record<string, unknown>): boolean {
   return Boolean(h && headers[h]);
 }
 
+const LOOPBACK = ['127.0.0.1', 'localhost', '::1'];
+
+/**
+ * DNS rebinding guard. A server listening only on this machine answers only requests addressed
+ * to a loopback name (or PUBLIC_URL's host); a web page whose domain was rebound to 127.0.0.1
+ * still sends its own name as Host and is refused.
+ */
+export function hostAllowed(hostHeader: unknown, env = process.env): boolean {
+  if (!LOOPBACK.includes(env.HOST || '127.0.0.1')) return true; // network-facing: PUBLIC_URL + keys protect it
+  let name: string;
+  try { name = new URL(`http://${String(hostHeader ?? '')}`).hostname.toLowerCase(); } catch { return false; }
+  if (['127.0.0.1', 'localhost', '[::1]'].includes(name)) return true;
+  if (env.PUBLIC_URL) {
+    try { return new URL(env.PUBLIC_URL).hostname.toLowerCase() === name; } catch { return false; }
+  }
+  return false;
+}
+
 /** Build the Fastify app with all routes. */
 export function buildServer(opts: { logger?: boolean } = {}): FastifyInstance {
   const app = Fastify({
     logger: opts.logger ? { level: process.env.LOG_LEVEL || 'info' } : false,
     bodyLimit: MAX_DIFF_BYTES + 64 * 1024,
     trustProxy: process.env.TRUST_PROXY === 'true',
+  });
+
+  app.addHook('onRequest', async (req, reply) => {
+    if (!hostAllowed(req.headers.host)) {
+      return reply.code(403).type('text/plain').send('Litti: unexpected Host header. Open Litti at http://127.0.0.1:<port>/ (or set PUBLIC_URL).');
+    }
   });
 
   // Security headers on every response. Inline styles/scripts are part of the page itself.

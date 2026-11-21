@@ -44,6 +44,24 @@ try {
     assert.ok(!ok.warnings.some(w => w.includes('LITTI_API_KEY')), 'no key warning when only listening locally');
     assert.ok(checkProductionConfig({ SECRET_KEY: 'x'.repeat(40), HOST: '0.0.0.0' }).warnings.some(w => w.includes('LITTI_API_KEY')), 'warns when reachable from the network');
     assert.ok(checkProductionConfig({ SECRET_KEY: 'x'.repeat(40), PUBLIC_URL: 'ftp://x' }).errors.length > 0);
+    const team = checkProductionConfig({ SECRET_KEY: 'x'.repeat(40), LITTI_API_KEY: 'k', LITTI_ADMIN_KEY: 'a' });
+    assert.ok(team.errors.some(e => e.includes('PUBLIC_URL')), 'team mode needs PUBLIC_URL: links must never come from the Host header');
+    assert.equal(checkProductionConfig({ SECRET_KEY: 'x'.repeat(40), LITTI_API_KEY: 'k', LITTI_ADMIN_KEY: 'a', PUBLIC_URL: 'https://litti.acme.test' }).errors.length, 0);
+  });
+
+  await step('SEC-9 Host check: loopback server answers only loopback names (DNS rebinding)', async () => {
+    const get = (host: string) => app.inject({ method: 'GET', url: '/api/pending', headers: { host } });
+    for (const h of ['127.0.0.1:3847', 'localhost:3847', '[::1]:3847', 'localhost']) assert.equal((await get(h)).statusCode, 200, h);
+    for (const h of ['evil.example', 'attacker.rebind.example:3847', '127.0.0.1.evil.example']) assert.equal((await get(h)).statusCode, 403, h);
+    process.env.PUBLIC_URL = 'https://litti.acme.test';
+    try {
+      assert.equal((await get('litti.acme.test')).statusCode, 200, 'PUBLIC_URL host is allowed');
+      const r = (await app.inject({ method: 'POST', url: '/api/actions', headers: { host: 'localhost' }, payload: { agent: 'bot', action: 'edit', description: 'x', diff: '+a', touchedPaths: ['a.ts'] } })).json();
+      assert.ok(r.approvalUrl.startsWith('https://litti.acme.test/approve/'), 'links come from PUBLIC_URL');
+    } finally { delete process.env.PUBLIC_URL; }
+    process.env.HOST = '0.0.0.0';
+    try { assert.equal((await get('litti.internal:3847')).statusCode, 200, 'non-loopback servers rely on PUBLIC_URL + keys instead'); }
+    finally { delete process.env.HOST; }
   });
 
   await step('security headers + no-store on review pages', async () => {

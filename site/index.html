@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Litti: proof of review for AI coding agents</title>
+<meta name="description" content="Open-source gate that blocks risky AI agent commands until a human reads the diff and passes a comprehension check. Works with Claude Code.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="canonical" href="%SITE_URL%">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Litti: proof of review for AI coding agents">
+<meta property="og:description" content="Blocks your coding agent's risky commands until a human reads the diff and answers one question about it.">
+<meta property="og:url" content="%SITE_URL%">
+<meta property="og:image" content="%SITE_URL%social-preview.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#0A0D12">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Litti","applicationCategory":"DeveloperApplication","operatingSystem":"Windows, macOS, Linux","license":"https://opensource.org/licenses/MIT","url":"%SITE_URL%","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}</script>
+<style>
+:root{--ink:#0A0D12;--ink2:#11151c;--line:#262c36;--paper:#F7F5F0;--brass:#F5B942;--muted:#9aa3ad;--text:#e9edf1;
+--mono:'SF Mono','Cascadia Code',Consolas,monospace;--sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,sans-serif}
+*{box-sizing:border-box}html{scroll-behavior:smooth}
+body{margin:0;background:var(--ink);color:var(--text);font-family:var(--sans);font-size:17px;line-height:1.6}
+a{color:var(--brass)}
+.wrap{max-width:1120px;margin:0 auto;padding:0 20px}
+nav.top{position:sticky;top:0;z-index:5;background:rgba(10,13,18,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+nav.top .wrap{display:flex;align-items:center;gap:22px;height:60px}
+nav.top img{height:26px;display:block}
+nav.top .links{margin-left:auto;display:flex;gap:20px;font-size:15px}
+nav.top .links a{color:var(--muted);text-decoration:none}nav.top .links a:hover{color:var(--text)}
+.hero{padding:88px 0 64px}
+.eyebrow{font-size:13px;font-weight:700;letter-spacing:1.4px;color:var(--brass);text-transform:uppercase}
+h1{font-size:clamp(34px,5.4vw,58px);line-height:1.08;letter-spacing:-1.2px;margin:14px 0 20px;max-width:900px}
+h1 em{font-style:normal;color:var(--brass)}
+.sub{font-size:19px;color:#c9d0d7;max-width:720px;margin:0 0 30px}
+.install{display:flex;flex-wrap:wrap;gap:14px;align-items:center}
+.cmd{display:flex;align-items:center;gap:12px;background:var(--ink2);border:1px solid var(--line);border-radius:12px;padding:12px 12px 12px 18px;font-family:var(--mono);font-size:16px}
+.cmd pre{margin:0;font:inherit;white-space:pre}.cmd .p{color:var(--brass);user-select:none}
+.copy{font:600 13px var(--sans);background:var(--brass);color:var(--ink);border:0;border-radius:8px;padding:7px 12px;cursor:pointer}
+.btn{display:inline-block;padding:12px 18px;border-radius:10px;border:1px solid var(--line);color:var(--text);text-decoration:none;font-weight:600}
+.btn:hover{border-color:var(--brass)}
+.trust{margin-top:18px;color:var(--muted);font-size:14px}
+.alt{margin-top:8px;color:var(--muted);font-size:14px}.alt code{font-family:var(--mono);font-size:13px;color:#c9d0d7;overflow-wrap:anywhere}
+.cmd{max-width:100%;overflow-x:auto}
+section{padding:64px 0;border-top:1px solid var(--line)}
+h2{font-size:clamp(26px,3.4vw,36px);letter-spacing:-.6px;margin:0 0 12px;line-height:1.2}
+.lead{color:#c9d0d7;max-width:740px;margin:0 0 28px}
+.yes{display:flex;flex-wrap:wrap;gap:10px;margin-top:20px}
+.yes span{padding:8px 18px;border-radius:8px;background:#1b2028;color:#6b7480;font-weight:600}
+.yes span.k{background:var(--brass);color:var(--ink)}
+.grid{display:grid;gap:18px;grid-template-columns:repeat(3,minmax(0,1fr))}
+.card{background:var(--ink2);border:1px solid var(--line);border-radius:14px;padding:22px}
+.card h3{margin:0 0 8px;font-size:18px}.card p{margin:0;color:#c9d0d7;font-size:15.5px}
+.card .n{display:inline-block;width:28px;height:28px;border-radius:50%;background:var(--brass);color:var(--ink);font-weight:800;text-align:center;line-height:28px;margin-bottom:10px}
+code{font-family:var(--mono);font-size:.88em;background:#1b2028;padding:1px 5px;border-radius:4px}
+.checks{display:grid;gap:12px;grid-template-columns:repeat(2,minmax(0,1fr))}
+.checks div{border-left:3px solid var(--brass);padding:4px 0 4px 14px}.checks b{display:block}.checks span{color:#c9d0d7;font-size:15px}
+.two{display:grid;gap:24px;grid-template-columns:1fr 1fr}
+.two ul{margin:0;padding-left:20px}.two li{margin:6px 0;color:#c9d0d7;font-size:15.5px}
+.works{display:flex;flex-wrap:wrap;gap:10px}.works span{border:1px solid var(--line);border-radius:999px;padding:6px 14px;font-size:15px}
+details{border-bottom:1px solid var(--line);padding:14px 0}summary{cursor:pointer;font-weight:600}details p{color:#c9d0d7;margin:10px 0 0}
+.cta{text-align:center}.cta .cmd{display:inline-flex;text-align:left;margin:18px 0}
+footer{border-top:1px solid var(--line);padding:28px 0 40px;color:var(--muted);font-size:14px}
+footer .wrap{display:flex;flex-wrap:wrap;gap:18px;justify-content:space-between}footer a{color:var(--muted)}
+@media (max-width:860px){.grid{grid-template-columns:1fr}.checks,.two{grid-template-columns:1fr}nav.top .links a.hide{display:none}.hero{padding:56px 0 40px}}
+</style>
+</head>
+<body>
+<nav class="top"><div class="wrap">
+  <a href="./"><img src="brand/litti-logo.svg" alt="Litti" width="82" height="26"></a>
+  <div class="links"><a class="hide" href="#how">How it works</a><a href="docs/">Docs</a><a href="https://github.com/Abhishek764/litti">GitHub</a></div>
+</div></nav>
+
+<header class="hero"><div class="wrap">
+  <div class="eyebrow">Proof of review for AI coding agents</div>
+  <h1>Your approve button is a spring lock. <em>Litti makes sure someone turned the key.</em></h1>
+  <p class="sub">Litti blocks your coding agent's risky commands (commits, pushes, deploys, migrations, big deletes) until a human reads the diff and answers one question about it. Every approval is bound to the exact change and written to a tamper-evident receipt.</p>
+  <div class="install">
+    <div class="cmd"><pre><span class="p">$ </span>npm install -g litti
+<span class="p">$ </span>litti demo</pre><button class="copy" data-copy="npm install -g litti &amp;&amp; litti demo">Copy</button></div>
+    <a class="btn" href="docs/">Read the docs →</a>
+  </div>
+  <p class="alt">Needs Node.js 22 or newer. From source: <code>git clone https://github.com/Abhishek764/litti &amp;&amp; cd litti &amp;&amp; npm install &amp;&amp; npm run demo</code></p>
+  <p class="trust">MIT licensed · runs on your machine · no account · no LLM calls</p>
+</div></header>
+
+<section><div class="wrap">
+  <h2>"Allow this command?" Yes. Yes. Yes.</h2>
+  <p class="lead">Coding agents ask for permission many times a day, and people say yes almost every time. An approve button records that someone clicked. It doesn't record that anyone looked. That's fine for <code>ls</code>. It isn't fine for <code>git push --force</code>, <code>DROP TABLE</code> or <code>terraform apply</code>.</p>
+  <div class="yes" aria-hidden="true"><span>Yes</span><span>Yes</span><span>Yes</span><span>Yes</span><span>Yes</span><span class="k">Read it</span></div>
+</div></section>
+
+<section id="how"><div class="wrap">
+  <h2>Fast stays fast. Risky waits for a human.</h2>
+  <p class="lead">Litti plugs into your agent as a hook. Reading files, editing, tests and builds go through untouched.</p>
+  <div class="grid">
+    <div class="card"><span class="n">1</span><h3>Your agent is stopped, not slowed</h3><p>When the agent tries a commit, push, deploy, migration or destructive command, the hook denies it at once and tells the agent to wait for review. If the hook can't reach Litti, it still denies.</p></div>
+    <div class="card"><span class="n">2</span><h3>You read it and prove it</h3><p>The review page shows the command and the code it would ship. Scroll to the end and answer one question built from the diff. Riskier changes need more reviewers, and you can't approve your own request.</p></div>
+    <div class="card"><span class="n">3</span><h3>It runs once. The receipt stays.</h3><p>The agent retries the same command and it goes through, once. Change one byte and it's a new review. The decision is chained into a receipt log that <code>litti verify</code> checks for tampering.</p></div>
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <h2>One question. A different kind each time.</h2>
+  <p class="lead">Clicking a box proves nothing. Litti asks about the change itself, and the kind of question usually changes from one review to the next. No AI writes the questions: they come from rules and the diff.</p>
+  <div class="checks">
+    <div><b>Quiz</b><span>"Which table does this migration alter?" Pick from four.</span></div>
+    <div><b>Spot the line</b><span>"Click the line that permanently deletes data."</span></div>
+    <div><b>Recall</b><span>Type the name of the function this change modifies. No options to guess from.</span></div>
+    <div><b>Canary</b><span>Is this line really in the change, or was one word quietly altered?</span></div>
+    <div><b>Count</b><span>How many lines does this change remove? (small diffs only)</span></div>
+    <div><b>Explain it</b><span>One sentence in your own words, saved in the receipt.</span></div>
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <h2>What's in the box</h2>
+  <div class="grid">
+    <div class="card"><h3>Risk tiers, no AI</h3><p>Every action gets a tier from 0 to 3 from plain rules: paths like <code>migrations/</code>, <code>auth/</code>, <code>.env</code>, diff size and destructive commands. The tier sets how many reviewers it needs.</p></div>
+    <div class="card"><h3>Catches rubber-stamping</h3><p>Approve a big diff in seconds or answer wrong, and Litti blocks it, resets every review on that action and makes the next one stricter.</p></div>
+    <div class="card"><h3>Bound to the exact diff</h3><p>Approval is a signed, single-use token tied to the SHA-256 of the change. Edit one byte or replay it and it's refused.</p></div>
+    <div class="card"><h3>Receipts you can verify</h3><p>Each decision is hash-chained to the one before. <code>litti verify</code> points at the first entry anyone edited.</p></div>
+    <div class="card"><h3>Talk it through</h3><p>The Changes view shows the agent's edits live. Comment on a line and the agent replies in the same thread.</p></div>
+    <div class="card"><h3>Tells your team</h3><p>Slack, Discord and Jira get a card with a Review button. Nobody can approve from chat: the button opens the review page.</p></div>
+  </div>
+  <p class="trust">Also: a <code>litti</code> CLI and HTTP API for any agent or pipeline, a signed webhook to your CI/CD, and <code>docker compose up -d</code> for a team server.</p>
+</div></section>
+
+<section><div class="wrap">
+  <h2>Built for people who read threat models</h2>
+  <div class="two">
+    <div class="card"><h3>What Litti enforces</h3><ul>
+      <li>Risky commands are denied until approved; the executor refuses without a valid, unused token.</li>
+      <li>The requester never counts as a reviewer.</li>
+      <li>Review time is measured by the server, not the browser.</li>
+      <li>Approval is bound to the SHA-256 of the exact diff and works once.</li>
+      <li>Receipts are hash-chained; <code>litti verify</code> points at the first broken link.</li>
+      <li>Tiers and questions come from rules, not a model. Diffs stay on your machine.</li>
+    </ul></div>
+    <div class="card"><h3>What Litti doesn't do (yet)</h3><ul>
+      <li>It gates risky shell commands by pattern, not by parsing shell. A determined agent can hide a push inside a script.</li>
+      <li>It proves a reviewer passed the check, not that the reviewer wasn't a browser automation.</li>
+      <li>Receipts are hash-chained but not signed, so someone with write access to the database could rewrite the whole chain.</li>
+      <li>It isn't a sandbox or a network firewall. Pair it with one.</li>
+    </ul></div>
+  </div>
+  <p class="trust"><a href="https://github.com/Abhishek764/litti/blob/main/SECURITY.md">Security policy and threat model</a> · Found a bypass? Report it privately.</p>
+</div></section>
+
+<section><div class="wrap">
+  <h2>Works with</h2>
+  <div class="works"><span>Claude Code</span><span>Codex</span><span>OpenCode</span><span>Any agent via CLI or HTTP API</span><span>Slack</span><span>Discord</span><span>Jira</span><span>CI/CD via signed webhook</span></div>
+  <p class="trust">Install the hook with <code>litti install claude</code>, <code>litti install codex</code> or <code>litti install opencode</code>. <a href="docs/connect-agent/">Gate your coding agent →</a></p>
+</div></section>
+
+<section><div class="wrap">
+  <h2>Questions</h2>
+  <details><summary>Doesn't this slow my agent down?</summary><p>Only for risky actions. Tests, builds, reading and editing files never wait. If gating plain commits is too much, set <code>LITTI_GATE_COMMIT=false</code> and keep pushes, deploys and migrations gated.</p></details>
+  <details><summary>Can my agent just answer the question itself?</summary><p>The agent can't approve through the hook, and the requester never counts as a reviewer. An agent that can drive your logged-in browser is a real risk; see SECURITY.md for the details and open issues.</p></details>
+  <details><summary>Does any code leave my machine?</summary><p>Diffs don't. If you connect Slack, Discord or Jira, they get the action's description, the command, file names, risk reasons and the diff's hash. Litti makes no LLM calls.</p></details>
+  <details><summary>Is this a replacement for pull request review?</summary><p>No. PR review happens after the agent has already pushed. Litti sits earlier: before the push, the migration or the deploy.</p></details>
+  <details><summary>What does "tamper-evident" mean here?</summary><p>Each receipt includes the hash of the one before it. Edit an old receipt and every later hash stops matching; <code>litti verify</code> names the first broken one. It shows tampering; it doesn't prevent it.</p></details>
+  <details><summary>Is it free?</summary><p>Yes, MIT licensed, and it runs on your machine with no account.</p></details>
+</div></section>
+
+<section class="cta"><div class="wrap">
+  <h2>See it block something in two minutes</h2>
+  <div class="cmd"><pre><span class="p">$ </span>npm install -g litti
+<span class="p">$ </span>litti demo</pre><button class="copy" data-copy="npm install -g litti &amp;&amp; litti demo">Copy</button></div>
+  <p class="lead" style="margin:0 auto 24px">Three sample changes: a CSS tweak, a migration and a destructive cleanup. Answer wrong on the dangerous one and watch Litti stop it.</p>
+  <a class="btn" href="https://github.com/Abhishek764/litti">Star on GitHub</a> <a class="btn" href="docs/">Read the docs</a> <a class="btn" href="docs/connect-agent/">Gate your agent →</a>
+</div></section>
+
+<footer><div class="wrap">
+  <span>Litti · MIT · <a href="https://github.com/Abhishek764/litti/blob/main/SECURITY.md">Security</a> · <a href="https://github.com/Abhishek764/litti">GitHub</a> · <a href="docs/">Docs</a></span>
+  <span>Made by an independent developer. Not affiliated with Anthropic, OpenAI or OpenCode.</span>
+</div></footer>
+<script>
+document.querySelectorAll('.copy').forEach(function(b){b.addEventListener('click',function(){
+  navigator.clipboard.writeText(b.getAttribute('data-copy')).then(function(){b.textContent='Copied';setTimeout(function(){b.textContent='Copy';},1400);}).catch(function(){b.textContent='Select to copy';});
+});});
+</script>
+</body>
+</html>

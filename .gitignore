@@ -9,3 +9,4 @@ deployed-*.txt
 data/
 deployments/
 *.tgz
+_site/

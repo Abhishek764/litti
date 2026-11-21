@@ -187,10 +187,11 @@ function selectedAnswer(){
   const r=document.querySelector('input[name=quiz]:checked');if(r)return r.value;
   const t=document.getElementById('answer');if(!t)return null;
   const v=t.value.trim();
-  if(kind==='explain'){const w=v.split(/\s+/).filter(Boolean).length;const c=document.getElementById('wc');if(c)c.textContent=w+' / 6 words';return w>=6?v:null;}
+  if(kind==='explain'){const w=v.split(/\\s+/).filter(Boolean).length;const c=document.getElementById('wc');if(c)c.textContent=w+' / 6 words';return w>=6?v:null;}
   return v||null;
 }
-function refresh(){btn.disabled=!(reviewed.checked && scrolled && selectedAnswer());}
+// Read the answer first so the word counter updates before the box is ticked.
+function refresh(){const a=selectedAnswer();btn.disabled=!(reviewed.checked && scrolled && a);}
 reviewed.addEventListener('change',refresh);
 document.querySelectorAll('input[name=quiz]').forEach(r=>r.addEventListener('change',refresh));
 const ansEl=document.getElementById('answer');if(ansEl)ansEl.addEventListener('input',refresh);

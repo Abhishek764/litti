@@ -1,7 +1,8 @@
 /** CLI tests: run the real `litti` command against a live in-process server. */
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { writeFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { writeFileSync, mkdtempSync, rmSync, existsSync, mkdirSync } from 'node:fs';
+import { createServer } from 'node:net';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 process.env.SECRET_KEY = 'cli-test-secret-'.repeat(4);
@@ -72,6 +73,80 @@ try {
   await step('wrong API key is refused', async () => {
     const r = await run({ LITTI_API_KEY: 'wrong' }, ['pending']);
     assert.notEqual(r.code, 0);
+  });
+
+  const freePort = () => new Promise<number>((resolve) => { const s = createServer().listen(0, '127.0.0.1', () => { const p = (s.address() as { port: number }).port; s.close(() => resolve(p)); }); });
+  // Default port for spawned entries: a free one, so a regression can never start a server on 3847.
+  const fallbackPort = String(await freePort());
+  // The real `litti` entry (src/main.ts) with its own LITTI_HOME: help and bad flags must never start a server.
+  const entry = (home: string, args: string[], until?: RegExp) => new Promise<{ code: number | null; out: string; started: boolean }>((resolve) => {
+    const child = spawn(process.execPath, ['--import', 'tsx', 'src/main.ts', ...args], {
+      env: { ...env, LITTI_HOME: home, CI: '1', LITTI_SKIP_CWD_ENV: '1', APPROVAL_SERVER_PORT: fallbackPort, LITTI_URL: '' },
+    });
+    let out = '';
+    let started = false;
+    const timer = setTimeout(() => child.kill(), 90000); // safety net only: a server that starts by mistake is killed as soon as it logs (startedRe)
+    const onData = (d: Buffer) => { out += d; if (until && until.test(out) && !started) { started = true; child.kill(); } };
+    child.stdout.on('data', onData);
+    child.stderr.on('data', onData);
+    child.on('close', code => { clearTimeout(timer); resolve({ code, out, started }); });
+  });
+  const startedRe = /Litti is running at|Server listening at/;
+
+  await step('litti --help / -h / help print help and exit; no server, no config.env', async () => {
+    for (const args of [['--help'], ['-h'], ['help'], ['start', '--help'], ['demo', '-h'], ['--port', '3872', '--help']]) {
+      const home = join(dir, `home-help-${args.join('')}`);
+      const r = await entry(home, args, startedRe);
+      assert.equal(r.code, 0, `${args.join(' ')}: ${r.out}`);
+      assert.equal(r.started, false, `${args.join(' ')} started a server`);
+      for (const s of ['litti [start]', 'litti demo', '--port N', '--port=N', '--no-open', '--version', 'propose', 'review', 'status', 'pending', 'verify', 'stats', 'notes', 'reply', 'resolve', 'submit', 'install']) {
+        assert.ok(r.out.includes(s), `${args.join(' ')}: help mentions ${s}`);
+      }
+      assert.equal(existsSync(join(home, 'config.env')), false, `${args.join(' ')} created config.env`);
+    }
+  });
+
+  await step('bad server flags exit with an error and never start or create config.env', async () => {
+    for (const [args, msg] of [
+      [['--bogus'], /Unknown option: --bogus/], [['start', '--prot', '3872'], /Unknown option: --prot/],
+      [['--port'], /--port needs a number/], [['start', '--port', '--no-open'], /--port needs a number/],
+      [['--port=abc'], /from 1 to 65535/], [['--port=70000'], /from 1 to 65535/], [['demo', '--port', '3.5'], /from 1 to 65535/],
+      [['start', 'extra'], /Unexpected argument: extra/],
+    ] as [string[], RegExp][]) {
+      const home = join(dir, `home-bad-${args.join('').replace(/[^a-z0-9]/gi, '')}`);
+      const r = await entry(home, args, startedRe);
+      assert.equal(r.code, 1, `${args.join(' ')}: ${r.out}`);
+      assert.equal(r.started, false, `${args.join(' ')} started a server`);
+      assert.match(r.out, msg, args.join(' '));
+      assert.match(r.out, /litti demo/, `${args.join(' ')}: help shown`);
+      assert.equal(existsSync(join(home, 'config.env')), false, `${args.join(' ')} created config.env`);
+    }
+  });
+
+  await step('litti start --port=N --no-open listens on N', async () => {
+    const free = await freePort();
+    const r = await entry(join(dir, 'home-port'), ['start', `--port=${free}`, '--no-open'], new RegExp(`running at http://127\\.0\\.0\\.1:${free}/`));
+    assert.ok(r.started, r.out);
+  });
+
+  await step('busy port: litti and litti demo print a friendly message, no stack trace, demo data kept', async () => {
+    const busy = createServer();
+    const p = await new Promise<number>((resolve) => busy.listen(0, '127.0.0.1', () => resolve((busy.address() as { port: number }).port)));
+    try {
+      for (const kind of ['start', 'demo']) {
+        const home = join(dir, `home-busy-${kind}`);
+        mkdirSync(home, { recursive: true });
+        writeFileSync(join(home, 'demo.db'), 'running demo data');
+        const r = await entry(home, [kind, '--port', String(p), '--no-open'], startedRe);
+        assert.equal(r.code, 1, `${kind}: ${r.out}`);
+        assert.match(r.out, new RegExp(`Port ${p} is already in use`), kind);
+        assert.match(r.out, new RegExp(`litti ${kind} --port ${p + 1}`), kind);
+        assert.doesNotMatch(r.out, /\n\s+at |EADDRINUSE/, `${kind}: no raw stack trace`);
+        assert.ok(existsSync(join(home, 'demo.db')), `${kind}: demo database not wiped`);
+      }
+    } finally {
+      busy.close();
+    }
   });
 
   console.log(`\n✅ ${passed} CLI checks passed`);

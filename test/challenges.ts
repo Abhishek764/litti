@@ -138,6 +138,36 @@ await step('review page renders the right input for each kind, and never the ans
   }
 });
 
+await step('explain: the served word counter splits on whitespace and updates before the box is ticked', () => {
+  // USER-3 / FIELD-6: `\s` inside the TS template was served as `s`, so words split on the letter "s".
+  const base = { tier: 2 as const, reasons: [], requiredApprovers: 1, approvalsSoFar: 0, approver: '', identityLocked: false, allowTyped: true, viewStamp: 'v', ticket: '' };
+  const html = renderApprovalPage({ ...base, card: CODE, quiz: buildChallenge('explain', CODE)!.quiz });
+  const script = html.match(/<script>([\s\S]*?)<\/script>/)![1];
+  const fns = script.match(/function selectedAnswer\(\)\{[\s\S]*?\nfunction refresh\(\)\{.*\}/)![0];
+  const run = (text: string, checked = false) => {
+    const wc = { textContent: '' };
+    const btn = { disabled: true };
+    const doc = { querySelector: () => null, getElementById: (id: string) => (id === 'answer' ? { value: text } : id === 'wc' ? wc : null) };
+    new Function('document', 'kind', 'picked', 'reviewed', 'scrolled', 'btn', `${fns}\nrefresh();`)(doc, 'explain', null, { checked }, true, btn);
+    return { words: wc.textContent, disabled: btn.disabled };
+  };
+  assert.equal(run('Drops the legacy token table and purges sessions').words, '8 / 6 words', 'counts real words, before the box is ticked');
+  assert.equal(run('Adds the Claude hook\tconfig file\n to the  repo').words, '9 / 6 words', 'tabs, newlines, double spaces');
+  assert.equal(run('This seems fine ss').words, '4 / 6 words', 'the letter s is not a separator');
+  assert.equal(run('Drops the legacy token table and purges sessions', true).disabled, false, 'enabled once ticked');
+  assert.equal(run('too short here', true).disabled, true, 'under 6 words stays disabled');
+});
+
+await step('inline page scripts keep their backslashes (no lone `\\x` inside a TS template)', () => {
+  // A single backslash inside a template literal is eaten (`\s` -> `s`); page scripts must double it.
+  for (const f of ['src/approval/page.ts', 'src/approval/inbox.ts', 'src/changes/page.ts', 'src/connect/page.ts', 'src/docs/site.ts']) {
+    const src = readFileSync(f, 'utf8');
+    for (const m of src.matchAll(/<script>([\s\S]*?)<\/script>/g)) {
+      for (const run of m[1].matchAll(/\\+/g)) assert.equal(run[0].length % 2, 0, `${f}: lone backslash near "${m[1].slice(Math.max(0, run.index! - 30), run.index! + 10)}"`);
+    }
+  }
+});
+
 await step('server: each kind can be passed end to end, and a wrong answer is blocked', async () => {
   const app = buildServer();
   for (const kind of CHALLENGE_KINDS) {

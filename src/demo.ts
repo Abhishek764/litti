@@ -10,6 +10,7 @@ import { readFileSync, rmSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { randomBytes } from 'node:crypto';
+import { createServer } from 'node:net';
 import open from 'open';
 import { initDb, enableDemoTamper } from './chain/db.js';
 import { buildServer, setNotifier, registerPending } from './approval/server.js';
@@ -29,10 +30,25 @@ process.env.LITTI_DEPLOY_DIR ??= 'deployments';
 const PORT = Number(process.env.APPROVAL_SERVER_PORT) || 3847;
 const BASE = `http://127.0.0.1:${PORT}`;
 
+function portBusy(): never {
+  console.error(`❌ Port ${PORT} is already in use. Is Litti already running? Open ${BASE}/ or try the demo on another port: litti demo --port ${PORT === 65535 ? PORT - 1 : PORT + 1}`);
+  process.exit(1);
+}
+
+/** Check the port before wiping the demo database, so a second `litti demo` can't wipe a running one's data. */
+function checkPortFree(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const probe = createServer();
+    probe.once('error', (err: NodeJS.ErrnoException) => (err.code === 'EADDRINUSE' ? portBusy() : reject(err)));
+    probe.listen(PORT, '127.0.0.1', () => probe.close(() => resolve()));
+  });
+}
+
 function diff(name: string): string { return readFileSync(join(DIFFS, name), 'utf8'); }
 
 async function main() {
   console.log('🔒 Litti starting...');
+  await checkPortFree();
 
   // Fresh database each demo run.
   const demoDb = process.env.LITTI_DEMO_DB || 'litti-demo.db';
@@ -45,7 +61,12 @@ async function main() {
   setNotifier(multiNotifier([notifierFromEnv(), liveConnectedNotifier()]));
 
   const app = buildServer();
-  await app.listen({ port: PORT, host: '127.0.0.1' });
+  try {
+    await app.listen({ port: PORT, host: '127.0.0.1' });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'EADDRINUSE') portBusy();
+    throw err;
+  }
   console.log(`🔑 Approval server on ${BASE}`);
 
   const cards = [

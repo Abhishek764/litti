@@ -1,7 +1,7 @@
 /** CLI tests: run the real `litti` command against a live in-process server. */
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { writeFileSync, mkdtempSync, rmSync, existsSync } from 'node:fs';
+import { writeFileSync, mkdtempSync, rmSync, existsSync, mkdirSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -85,7 +85,7 @@ try {
     });
     let out = '';
     let started = false;
-    const timer = setTimeout(() => child.kill(), 20000); // a server that starts by mistake is killed, then fails below
+    const timer = setTimeout(() => child.kill(), 90000); // safety net only: a server that starts by mistake is killed as soon as it logs (startedRe)
     const onData = (d: Buffer) => { out += d; if (until && until.test(out) && !started) { started = true; child.kill(); } };
     child.stdout.on('data', onData);
     child.stderr.on('data', onData);
@@ -127,6 +127,26 @@ try {
     const free = await freePort();
     const r = await entry(join(dir, 'home-port'), ['start', `--port=${free}`, '--no-open'], new RegExp(`running at http://127\\.0\\.0\\.1:${free}/`));
     assert.ok(r.started, r.out);
+  });
+
+  await step('busy port: litti and litti demo print a friendly message, no stack trace, demo data kept', async () => {
+    const busy = createServer();
+    const p = await new Promise<number>((resolve) => busy.listen(0, '127.0.0.1', () => resolve((busy.address() as { port: number }).port)));
+    try {
+      for (const kind of ['start', 'demo']) {
+        const home = join(dir, `home-busy-${kind}`);
+        mkdirSync(home, { recursive: true });
+        writeFileSync(join(home, 'demo.db'), 'running demo data');
+        const r = await entry(home, [kind, '--port', String(p), '--no-open'], startedRe);
+        assert.equal(r.code, 1, `${kind}: ${r.out}`);
+        assert.match(r.out, new RegExp(`Port ${p} is already in use`), kind);
+        assert.match(r.out, new RegExp(`litti ${kind} --port ${p + 1}`), kind);
+        assert.doesNotMatch(r.out, /\n\s+at |EADDRINUSE/, `${kind}: no raw stack trace`);
+        assert.ok(existsSync(join(home, 'demo.db')), `${kind}: demo database not wiped`);
+      }
+    } finally {
+      busy.close();
+    }
   });
 
   console.log(`\n✅ ${passed} CLI checks passed`);

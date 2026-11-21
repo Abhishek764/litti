@@ -137,8 +137,8 @@ If the code changes after approval, that's a new review. If Litti isn't running,
 
 | Agent | What `litti install` writes |
 |---|---|
-| Claude Code | `.claude/settings.json`: a `PreToolUse` hook on Bash |
-| Codex | `.codex/hooks.json`: a `PreToolUse` hook ([may need enabling](https://developers.openai.com/codex/hooks)) |
+| Claude Code | `.claude/settings.json`: a `PreToolUse` hook on Bash and PowerShell |
+| Codex | `.codex/hooks.json`: a `PreToolUse` hook on Bash ([trust it with `/hooks`](https://learn.chatgpt.com/docs/hooks)) |
 | OpenCode | `.opencode/plugin/litti.ts`: blocks in `tool.execute.before` |
 
 > 💡 Give your agent the rules in [docs/agent-instructions.md](docs/agent-instructions.md) (paste into `CLAUDE.md` / `AGENTS.md`) so it waits for review instead of looking for workarounds.

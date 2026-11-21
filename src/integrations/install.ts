@@ -4,7 +4,7 @@
  * Wires the Litti gate into a project's agent config. Existing settings are kept;
  * an earlier Litti entry is replaced, never duplicated.
  *
- *  - Claude Code: .claude/settings.json → hooks.PreToolUse (matcher "Bash"), onFailure "block"
+ *  - Claude Code: .claude/settings.json → hooks.PreToolUse (matcher "Bash|PowerShell"), onFailure "block"
  *  - Codex:       .codex/hooks.json     → hooks.PreToolUse (matcher "^Bash$"); trust it with /hooks
  *
  * Fail closed: if the hook can't run at all (node missing, Litti moved or uninstalled, a crash),
@@ -125,7 +125,7 @@ export function install(agent: AgentName, projectDir: string, root = LITTI_ROOT,
   const dir = resolve(projectDir);
   if (agent === 'claude') {
     const file = join(dir, '.claude', 'settings.json');
-    writeJson(file, mergeHooks(readJson(file), claudeHook(root, opts.execForm), 'Bash'));
+    writeJson(file, mergeHooks(readJson(file), claudeHook(root, opts.execForm), 'Bash|PowerShell'));
     return { file, notes: ['Restart Claude Code (or run /hooks) so it loads the hook.'] };
   }
   if (agent === 'codex') {

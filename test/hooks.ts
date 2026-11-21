@@ -84,6 +84,16 @@ try {
     assert.equal(extractCommand({ tool_name: 'Write', tool_input: { file_path: 'a' } }), null);
   });
 
+  await step('Claude Code PowerShell tool: payload is read and a risky command is denied', async () => {
+    const ps = { tool_name: 'PowerShell', tool_input: { command: 'git push origin main', description: 'push' }, cwd: repo };
+    assert.equal(extractCommand(ps), 'git push origin main');
+    process.env.LITTI_URL = 'http://127.0.0.1:9';
+    try {
+      const out = JSON.parse(await runHook('claude', JSON.stringify(ps)));
+      assert.equal(out.hookSpecificOutput.permissionDecision, 'deny');
+    } finally { delete process.env.LITTI_URL; }
+  });
+
   await step('harmless command: allowed without calling Litti', async () => {
     const d = await gate('npm test', repo, { ...opts, fetchImpl: () => { throw new Error('should not call'); } });
     assert.equal(d.decision, 'allow');
@@ -242,6 +252,7 @@ try {
       assert.deepEqual(s.hooks.Stop, []);
       assert.equal(s.hooks.PreToolUse.length, 2, 'own hook kept, Litti added once');
       const litti = s.hooks.PreToolUse.find((g: any) => /hook-cli/.test(g.hooks[0].command));
+      assert.equal(litti.matcher, 'Bash|PowerShell', 'Claude Code on Windows runs shell commands through a PowerShell tool too');
       assert.match(litti.hooks[0].command, /hook-cli\.ts" claude \|\| exit 2$/, 'shell form fails closed');
       assert.equal(litti.hooks[0].onFailure, 'block', 'Claude Code blocks on hook failure/timeout');
 

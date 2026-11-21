@@ -21,15 +21,15 @@ litti install claude      # or: codex, opencode, all
 
 | Agent | What gets written |
 |---|---|
-| Claude Code | `.claude/settings.json`: a `PreToolUse` hook on the Bash tool |
-| Codex | `.codex/hooks.json`: a `PreToolUse` hook |
+| Claude Code | `.claude/settings.json`: a `PreToolUse` hook on the Bash and PowerShell tools (matcher `Bash\|PowerShell`); if the hook itself can't run, the command is blocked |
+| Codex | `.codex/hooks.json`: a `PreToolUse` hook on shell commands (matcher `^Bash$`) |
 | OpenCode | `.opencode/plugin/litti.ts`: a plugin that blocks in `tool.execute.before` |
 
 Your other settings are kept. Running `install` again replaces Litti's entry; it never adds a second one.
 
 Restart the agent afterwards so it loads the hook.
 
-> **Codex:** hooks may need to be switched on in your Codex config, and some Codex versions don't run hooks on Windows. Check the [Codex hooks docs](https://developers.openai.com/codex/hooks) for your version.
+> **Codex:** Codex only runs project hooks you have trusted. Open Codex in the project and run `/hooks` to trust the Litti hook, and do it again after upgrading or moving Litti: Codex skips a changed hook without a warning. See the [Codex hooks docs](https://learn.chatgpt.com/docs/hooks).
 
 ## 3. Watch it work
 

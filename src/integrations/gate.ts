@@ -14,7 +14,6 @@
  * We never block until a timeout: a hook that times out fails open in most agents.
  */
 import { readChanges } from '../changes/git.js';
-import type { ActionKind } from '../types.js';
 
 export interface GateDecision {
   decision: 'allow' | 'deny';
@@ -23,35 +22,8 @@ export interface GateDecision {
   actionId?: string;
 }
 
-interface Rule { re: RegExp; action: ActionKind; why: string }
-
-/** What counts as risky. Order matters: the first match names the action. */
-const RULES: Rule[] = [
-  { re: /\b(drop\s+(table|database|schema)|truncate\s+table)\b/i, action: 'delete', why: 'destructive SQL' },
-  { re: /\brm\s+-[a-z]*r[a-z]*f|\brm\s+-[a-z]*f[a-z]*r|\bRemove-Item\b.*-Recurse/i, action: 'delete', why: 'recursive delete' },
-  { re: /\bgit\s+(reset\s+--hard|clean\s+-[a-z]*f|push\s+.*(--force|-f\b)|branch\s+-D)/i, action: 'delete', why: 'history-rewriting git command' },
-  { re: /\b(terraform|tofu)\s+(apply|destroy)|\bpulumi\s+(up|destroy)|\bkubectl\s+(apply|delete|replace|rollout)|\bhelm\s+(install|upgrade|uninstall|rollback)/i, action: 'deploy', why: 'infrastructure change' },
-  { re: /\b(vercel|netlify|fly|flyctl|railway|wrangler|firebase|serverless|sls|eb|cdk)\b[^|;&]*\b(deploy|publish|up)\b|\bgcloud\s+.*\bdeploy\b|\baws\s+\S+\s+(delete|terminate|deploy)/i, action: 'deploy', why: 'deploy' },
-  { re: /\b(npm|pnpm|yarn|bun|cargo|twine|gem|dotnet\s+nuget)\s+(publish|push)\b|\bdocker\s+push\b/i, action: 'deploy', why: 'package publish' },
-  { re: /\b(prisma\s+migrate\s+(deploy|reset)|knex\s+migrate|sequelize\s+db:migrate|alembic\s+upgrade|rails\s+db:migrate|manage\.py\s+migrate|flyway\s+migrate|liquibase\s+update|drizzle-kit\s+(push|migrate))/i, action: 'migrate', why: 'database migration' },
-  { re: /\bgit\s+push\b/i, action: 'deploy', why: 'git push' },
-  { re: /\bgit\s+commit\b/i, action: 'edit', why: 'git commit' },
-  { re: /\bgh\s+pr\s+merge\b|\bgit\s+merge\b/i, action: 'edit', why: 'merge' },
-];
-
-/** Classify a shell command. Extra patterns: LITTI_GATE_PATTERNS (regex, `;;`-separated). */
-export function classify(command: string, env = process.env): { risky: boolean; action: ActionKind; why: string } {
-  const cmd = command.trim();
-  const commitOff = env.LITTI_GATE_COMMIT === 'false';
-  for (const r of RULES) {
-    if (commitOff && r.why === 'git commit') continue;
-    if (r.re.test(cmd)) return { risky: true, action: r.action, why: r.why };
-  }
-  for (const p of (env.LITTI_GATE_PATTERNS || '').split(';;').map(s => s.trim()).filter(Boolean)) {
-    try { if (new RegExp(p, 'i').test(cmd)) return { risky: true, action: 'deploy', why: `matches LITTI_GATE_PATTERNS (${p})` }; } catch { /* bad pattern: ignore */ }
-  }
-  return { risky: false, action: 'read', why: '' };
-}
+export { classify } from './classify.js';
+import { classify } from './classify.js';
 
 /**
  * Pull the shell command out of a hook payload. Claude Code and Codex send

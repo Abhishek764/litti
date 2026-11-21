@@ -76,7 +76,40 @@ try {
       assert.equal(classify(c).risky, false, c);
     }
     assert.equal(classify('git commit -m x', { LITTI_GATE_COMMIT: 'false' }).risky, false);
-    assert.equal(classify('make release', { LITTI_GATE_PATTERNS: '^make release' }).risky, true);
+    assert.equal(classify('make ship-it', { LITTI_GATE_PATTERNS: '^make ship-it' }).risky, true);
+  });
+
+  await step('P0-6 classifier: every command from the QA probe list (table)', () => {
+    // [command, risky?] — QA run-1 probes (QA-5, QA-6, FIELD-3, SEC-4) plus the Wave B brief.
+    const table: [string, boolean][] = [
+      ['git -C ../repo push origin main', true], ['git --no-pager push', true], ['git -c core.hooksPath=/dev/null push', true], ['git -c user.email=x commit -m hi', true],
+      ['git --git-dir=.git push', true], ['git --git-dir .git push', true],
+      ['rm -r -f build', true], ['rm --recursive --force /', true], ['rm -R -f dist', true], ['find . -name "*.ts" -delete', true], ['find . -exec rm {} +', true],
+      [String.raw`del /s /q C:\proj`, true], ['rmdir /s /q src', true], ['Remove-Item -Path x -Rec -Force', true], ['Remove-Item -Recurse -Force dist', true], ['ri -r -fo node_modules', true],
+      ['twine upload dist/*', true], ['poetry publish', true], ['uv publish', true], ['npm unpublish litti@0.3.0', true], ['mvn deploy', true], ['./gradlew publish', true],
+      ['vercel --prod', true], ['npx vercel --prod', true], ['npm run deploy', true], ['pnpm run release', true], ['yarn run publish', true], ['yarn deploy', true], ['make deploy', true], ['./deploy.sh', true],
+      ['kubectl scale deploy web --replicas=0', true], ['kubectl patch svc web -p x', true], ['kubectl set image deploy/web web=img:2', true], ['kubectl create -f x.yaml', true],
+      ['kubectl apply -f k8s/', true], ['kubectl -n prod delete pod x', true], ['kubectl rollout restart deploy/web', true],
+      ['aws s3 rm s3://bucket --recursive', true], ['aws s3 sync . s3://b --delete', true], ['aws lambda update-function-code --function-name f', true], ['az group delete -n rg', true], ['gcloud compute instances delete vm1', true],
+      ['psql -c "DELETE FROM users"', true], ['psql -c "ALTER TABLE users DROP COLUMN email"', true], ['mysql -e "DROP TABLE t"', true], ['echo "TRUNCATE t" | psql', true],
+      ['redis-cli FLUSHALL', true], ['prisma db push --accept-data-loss', true], ['rails db:drop', true], ['rake db:migrate', true], ['python manage.py flush', true],
+      ['git checkout -- .', true], ['git restore --staged --worktree .', true], ['git stash drop', true], ['git stash clear', true], ['git rm -r src', true], ['git rebase -i HEAD~3', true],
+      ['git filter-branch --force', true], ['git branch --delete --force main', true], ['git tag -d v1', true], ['git push --force-with-lease', true], ['git clean -fdx', true],
+      ['gh release create v1', true], ['gh repo delete me/x --yes', true], ['docker buildx build --push -t x .', true], ['heroku releases:rollback', true],
+      ['GIT_DIR=.git git push', true], ['g""it push', true], [String.raw`g\it push`, true], ['eval "git push"', true], ['git push', true],
+      ['sh -c "git push"', true], ["bash -lc 'npm publish'", true], ['cd /repo && git push', true], ['npm test; rm -rf /', true], ['echo $(git push)', true], ['(git push)', true],
+      ['sudo -u deploy git push', true], ['env FOO=1 git push', true], ['nohup git push &', true], ['pwsh -Command "git push"', true], ['cmd /c git push', true],
+      [String.raw`C:\tools\git.exe push`, true], ['FOO=1 BAR=2 npm publish', true],
+      // false positives that must stay free
+      ['grep -rn "git push" docs/', false], ['echo "remember to git commit later"', false], ['git log --grep="git commit"', false], ['kubectl rollout status deploy/web', false],
+      ['cat vercel.json deploy.md', false], ['git commit-tree abc', false], ['man git-push', false], ['ls migrations/drop_table.sql', false], ['cat notes | grep "DROP TABLE"', false],
+      ['git restore --staged x', false], ['git status 2>&1', false], ['kubectl get pods -n prod', false], ['python -m pytest', false], ['git stash list', false], ['npm run build', false],
+      ['rm -r node_modules', false], ['git checkout main', false], ['git merge --abort', false],
+    ];
+    const wrong = table.filter(([c, risky]) => classify(c, {}).risky !== risky).map(([c, r]) => `${r ? 'MISS' : 'FP'} ${c}`);
+    assert.deepEqual(wrong, []);
+    assert.equal(classify('git push --force origin main', {}).action, 'delete', 'the most severe reading names the action');
+    assert.equal(classify('npm test && git commit -m x && git push', {}).action, 'deploy');
   });
 
   await step('extractCommand: Claude Code, Codex (argv) and OpenCode payloads', () => {

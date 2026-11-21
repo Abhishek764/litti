@@ -28,7 +28,7 @@ const propose = async (headers: Record<string, string> = {}) => (await app.injec
   payload: { agent: 'coder-bot', action: 'edit', description: 'Charge in cents', diff: DIFF, touchedPaths: ['src/pay.ts'] },
 })).json();
 // Reviewers come from another machine unless a test says otherwise: on this machine, local mode signs in the OS user.
-const submit = (id: string, body: Record<string, unknown>, headers: Record<string, string> = {}, remoteAddress = '10.0.0.7') =>
+const submit = (id: string, body: Record<string, unknown>, headers: Record<string, string> = {}, remoteAddress = '203.0.113.7') =>
   app.inject({ method: 'POST', url: `/approve/${id}/submit`, headers, remoteAddress, payload: { scrolledToBottom: true, ...body } });
 const answer = (id: string) => sampleAnswer(getPending(id)!);
 // A page opened `agoMs` ago, for `who` (the reviewer the page was served to, if known).

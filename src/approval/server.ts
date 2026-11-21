@@ -12,7 +12,7 @@ import { assessRisk } from '../rules/tiering.js';
 import { detectRubberStamp } from '../rules/rubberstamp.js';
 import { renderApprovalPage } from './page.js';
 import { createToken, validateToken } from './token.js';
-import { allowSelfAsserted, elapsedSinceView, issueTicket, issueViewStamp, localMode, localReviewerName, resolveReviewer, verifyTicket } from './identity.js';
+import { allowSelfAsserted, issueTicket, issueViewStamp, localMode, localReviewerName, readViewStamp, resolveReviewer, reviewerKey, verifyTicket } from './identity.js';
 import { renderInbox } from './inbox.js';
 import { registerChangesRoutes } from '../changes/routes.js';
 import { registerConnectRoutes } from '../connect/routes.js';
@@ -21,7 +21,7 @@ import { execute } from '../deploy/executor.js';
 import { appendReceipt, attentionScore } from '../chain/receipt.js';
 import { verifyChain } from '../chain/verify.js';
 import {
-  insertPending, getPending, updatePending, allReceipts, corruptReceipt, demoMode,
+  insertPending, getPending, updatePending, allReceipts, corruptReceipt, demoMode, consumeOnce,
   getSetting, setSetting, setApprovalToken, getApprovalToken, listPending, latestByDiffHash, isShipped, markShipped,
 } from '../chain/db.js';
 
@@ -157,13 +157,13 @@ function apiKeyOk(given: unknown): boolean {
 }
 
 /**
- * Issuing review links is an admin power: whoever holds it can name reviewers.
- * With LITTI_ADMIN_KEY set, agents holding only LITTI_API_KEY can't do it.
+ * Issuing review links is an admin power: whoever holds it can name reviewers. It always needs
+ * LITTI_ADMIN_KEY, local mode included (`litti` generates one into ~/.litti/config.env), so an
+ * agent calling the API with no key, or with only LITTI_API_KEY, can't mint itself a reviewer.
  */
 function adminKeyOk(headers: Record<string, unknown>): boolean {
   const admin = process.env.LITTI_ADMIN_KEY;
-  if (admin) return keyMatches(headers['x-litti-admin-key'], admin);
-  return apiKeyOk(headers['x-litti-key']);
+  return Boolean(admin) && keyMatches(headers['x-litti-admin-key'], admin!);
 }
 
 /** Local sign-in uses the OS user; an agent with that same name could approve itself. */
@@ -173,11 +173,8 @@ function localClash(agent: string): string {
     'or set LITTI_LOCAL_REVIEWER in ~/.litti/config.env.';
 }
 function agentIsLocalReviewer(agent: string): boolean {
-  return localMode() && normName(agent) === normName(localReviewerName());
+  return localMode() && reviewerKey(agent) === reviewerKey(localReviewerName());
 }
-
-/** Same person, however they type their name. */
-const normName = (s: string) => s.normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase();
 
 /** The inbox lists every pending action. Open locally; behind SSO in production. */
 function inboxAllowed(headers: Record<string, unknown>): boolean {
@@ -276,7 +273,7 @@ export function buildServer(opts: { logger?: boolean } = {}): FastifyInstance {
       approver: known,
       identityLocked: Boolean(known),
       allowTyped: allowSelfAsserted(),
-      viewStamp: issueViewStamp(pending.id),
+      viewStamp: issueViewStamp(pending.id, Date.now(), known && 'id' in who ? who.id : undefined),
       ticket: req.query.t && verifyTicket(req.query.t, pending.id) ? req.query.t : '',
     }));
   });
@@ -291,9 +288,15 @@ export function buildServer(opts: { logger?: boolean } = {}): FastifyInstance {
     const who = resolveReviewer(req.headers, body.ticket || undefined, body.approver, pending.id, req.ip);
     if ('error' in who) return reply.code(401).send({ ok: false, message: `🔐 ${who.error.replace('<id>', pending.id)}` });
 
-    // Review time is measured by the server from the signed page-open stamp.
-    const serverMs = elapsedSinceView(body.viewStamp, pending.id);
-    if (serverMs === null) return reply.code(400).send({ ok: false, message: 'This review page expired. Reload it and review again.' });
+    // Review time is measured by the server from the signed page-open stamp. A stamp is used up
+    // by any submit, pass or fail, and is bound to the reviewer the page was opened for.
+    const view = readViewStamp(body.viewStamp, pending.id);
+    if (!view) return reply.code(400).send({ ok: false, message: 'This review page expired. Reload it and review again.' });
+    if (!consumeOnce(`view:${view.nonce}`)) return reply.code(409).send({ ok: false, message: 'This review page was already submitted once. Reload it and review again.' });
+    if (who.source !== 'self-asserted' ? view.reviewerId !== who.id : view.reviewerId !== undefined && view.reviewerId !== who.id) {
+      return reply.code(403).send({ ok: false, message: '🔒 This review page was opened for a different reviewer. Open your own review link.' });
+    }
+    const serverMs = view.elapsedMs;
     const clientMs = Number(body.timeSpentMs);
     const sub: ApprovalSubmission = {
       actionId: pending.id,
@@ -303,15 +306,15 @@ export function buildServer(opts: { logger?: boolean } = {}): FastifyInstance {
       scrolledToBottom: body.scrolledToBottom === true,
       timestamp: new Date().toISOString(),
       identitySource: who.source,
+      reviewerId: who.id,
     };
     const quizCorrect = checkAnswer(pending.quiz.kind, pending.quizAnswer, sub.quizAnswer, card);
-    const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
-
-    // Separation of duties: the requester can't approve, and nobody counts twice.
-    if (same(sub.approver, card.agent)) {
+    // Separation of duties: the requester can't approve, and nobody counts twice (normalised ids,
+    // so "Bob", "bob​" and a Cyrillic "Bоb" are one person).
+    if (who.id === reviewerKey(card.agent)) {
       return { ok: false, message: who.source === 'local' ? localClash(card.agent) : '🔒 The requester cannot approve their own action.' };
     }
-    if (pending.currentApprovals.some(a => same(a.approver, sub.approver))) {
+    if (pending.currentApprovals.some(a => (a.reviewerId ?? reviewerKey(a.approver)) === who.id)) {
       return { ok: false, message: `🔒 ${sub.approver} already countersigned. Tier ${pending.tier} needs ${pending.requiredApprovers} different reviewers.` };
     }
 
@@ -483,17 +486,19 @@ export function buildServer(opts: { logger?: boolean } = {}): FastifyInstance {
   // Admin/CLI API: issue a personal, signed review link for one reviewer.
   app.post<{ Params: { id: string }; Body: { reviewer?: string } }>('/api/actions/:id/review-link', (req, reply) => {
     if (!adminKeyOk(req.headers)) {
-      return reply.code(401).send({ ok: false, message: process.env.LITTI_ADMIN_KEY ? 'Invalid or missing x-litti-admin-key header.' : 'Invalid or missing x-litti-key header.' });
+      return reply.code(401).send({ ok: false, message: process.env.LITTI_ADMIN_KEY
+        ? 'Invalid or missing x-litti-admin-key header. `litti review` sends it from ~/.litti/config.env.'
+        : 'Review links need LITTI_ADMIN_KEY on the server (`litti` creates one in ~/.litti/config.env).' });
     }
     const p = getPending(req.params.id);
     if (!p) return reply.code(404).send({ ok: false, message: 'Unknown action.' });
     if (p.status !== 'pending') return reply.code(409).send({ ok: false, message: `Action is already ${p.status}.` });
     const reviewer = typeof req.body?.reviewer === 'string' ? req.body.reviewer.trim().slice(0, 64) : '';
     if (!reviewer) return reply.code(400).send({ ok: false, message: 'Required: reviewer.' });
-    if (normName(reviewer) === normName(p.actionCard.agent)) {
+    if (reviewerKey(reviewer) === reviewerKey(p.actionCard.agent)) {
       return reply.code(403).send({ ok: false, message: 'The requester cannot review their own action.' });
     }
-    const t = issueTicket(p.id, reviewer, normName(reviewer));
+    const t = issueTicket(p.id, reviewer, reviewerKey(reviewer));
     return { ok: true, reviewer, expiresInMinutes: 30, url: `${baseUrlFor(req)}/approve/${p.id}?t=${encodeURIComponent(t)}` };
   });
 

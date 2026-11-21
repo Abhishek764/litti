@@ -253,6 +253,12 @@ export function markShipped(tokenId: string): boolean {
     .run(`ship:${tokenId}`, new Date().toISOString()).changes === 1;
 }
 
+/** Use a one-time value (e.g. a review page's view stamp). False if it was used before. */
+export function consumeOnce(key: string): boolean {
+  return getDb().prepare('INSERT OR IGNORE INTO consumed_tokens (token_id, consumed_at) VALUES (?, ?)')
+    .run(`once:${key}`, new Date().toISOString()).changes === 1;
+}
+
 export function releaseToken(tokenId: string): void {
   getDb().prepare('DELETE FROM consumed_tokens WHERE token_id = ?').run(tokenId);
 }

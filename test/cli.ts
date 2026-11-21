@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 process.env.SECRET_KEY = 'cli-test-secret-'.repeat(4);
 process.env.LITTI_API_KEY = 'cli-test-key';
+process.env.LITTI_ADMIN_KEY = 'cli-admin-key';
 import { initDb } from '../src/chain/db.js';
 import { buildServer, setNotifier } from '../src/approval/server.js';
 
@@ -25,7 +26,7 @@ async function step(name: string, fn: () => void | Promise<void>) {
 try {
   await app.listen({ port: 0, host: '127.0.0.1' });
   const port = (app.server.address() as { port: number }).port;
-  const env = { ...process.env, LITTI_URL: `http://127.0.0.1:${port}`, LITTI_API_KEY: 'cli-test-key' };
+  const env = { ...process.env, LITTI_URL: `http://127.0.0.1:${port}`, LITTI_API_KEY: 'cli-test-key', LITTI_ADMIN_KEY: 'cli-admin-key' };
   // Async spawn: a blocking spawn would freeze this process and its server.
   const run = (extraEnv: Record<string, string>, args: string[]) => new Promise<{ code: number | null; out: string }>((resolve) => {
     const child = spawn(process.execPath, ['--import', 'tsx', 'src/cli.ts', ...args], { env: { ...env, ...extraEnv } });

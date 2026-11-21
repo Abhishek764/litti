@@ -56,6 +56,8 @@ export interface ApprovalSubmission {
   timestamp: string;
   /** How the reviewer was identified: SSO header, signed review link, typed name, or local OS user. */
   identitySource?: 'sso' | 'ticket' | 'self-asserted' | 'local';
+  /** Normalised reviewer key (see reviewerKey): one person counts once, however the name is spelled. */
+  reviewerId?: string;
 }
 
 /** Per-approver quiz result embedded in a token. */

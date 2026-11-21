@@ -8,7 +8,7 @@ process.env.LITTI_DEPLOY_DIR = join(tmpdir(), `litti-sec-${process.pid}`);
 delete process.env.LITTI_API_KEY;
 import { initDb, getPending, getApprovalToken } from '../src/chain/db.js';
 import { buildServer, setNotifier } from '../src/approval/server.js';
-import { issueViewStamp } from '../src/approval/identity.js';
+import { issueTicket, issueViewStamp, reviewerKey } from '../src/approval/identity.js';
 import { sampleAnswer } from '../src/agents/challenges.js';
 import { createToken } from '../src/approval/token.js';
 
@@ -146,6 +146,69 @@ try {
   await step('0.5.10 the tamper button only exists in demo mode', async () => {
     assert.equal((await app.inject({ method: 'GET', url: '/api/meta' })).json().demo, false);
     assert.equal((await app.inject({ method: 'POST', url: '/api/demo/break-chain', payload: {} })).statusCode, 404);
+  });
+
+  await step('P0-5 SEC-3 review links need the admin key, also in local mode; litti creates one', async () => {
+    const a = await propose({ description: 'admin key' });
+    const link = (headers: Record<string, string> = {}) => app.inject({ method: 'POST', url: `/api/actions/${a.id}/review-link`, headers, payload: { reviewer: 'bob' } });
+    assert.equal((await link()).statusCode, 401, 'local mode, no admin key configured: refused');
+    process.env.LITTI_ADMIN_KEY = 'adm';
+    try {
+      assert.equal((await link()).statusCode, 401, 'no header');
+      assert.equal((await link({ 'x-litti-admin-key': 'nope' })).statusCode, 401, 'wrong key');
+      assert.equal((await link({ 'x-litti-admin-key': 'adm' })).statusCode, 200);
+    } finally { delete process.env.LITTI_ADMIN_KEY; }
+    const { mkdtempSync, readFileSync, writeFileSync, rmSync } = await import('node:fs');
+    const { loadHome } = await import('../src/home.js');
+    const home = mkdtempSync(join(tmpdir(), 'litti-sec-home-'));
+    try {
+      const env: Record<string, string | undefined> = { LITTI_HOME: home };
+      loadHome(env);
+      assert.match(env.LITTI_ADMIN_KEY ?? '', /^[0-9a-f]{48}$/, 'first run generates LITTI_ADMIN_KEY');
+      assert.match(readFileSync(join(home, 'config.env'), 'utf8'), /^LITTI_ADMIN_KEY=[0-9a-f]{48}$/m);
+      writeFileSync(join(home, 'config.env'), 'SECRET_KEY=' + 'x'.repeat(64) + '\n');
+      const old: Record<string, string | undefined> = { LITTI_HOME: home };
+      loadHome(old);
+      assert.match(old.LITTI_ADMIN_KEY ?? '', /^[0-9a-f]{48}$/, 'an older config gets one added');
+    } finally { rmSync(home, { recursive: true, force: true }); }
+  });
+
+  await step('P0-5 SEC-8 one person counts once: case, zero-width, Cyrillic/Greek look-alikes', async () => {
+    assert.equal(reviewerKey('Bob'), 'bob');
+    for (const v of ['bob​', 'Bоb', 'Вob ', 'B o b', 'BOB⁠', 'Ｂob', 'B‏ob']) assert.equal(reviewerKey(v), 'bob', JSON.stringify(v));
+    assert.notEqual(reviewerKey('rob'), 'bob');
+    const a = await propose({ action: 'delete', description: 'needs three' });
+    assert.equal(getPending(a.id)!.requiredApprovers, 3);
+    const submit = (who: string) => app.inject({ method: 'POST', url: `/approve/${a.id}/submit`, payload: { approver: who, quizAnswer: sampleAnswer(getPending(a.id)!), scrolledToBottom: true, viewStamp: issueViewStamp(a.id, Date.now() - 45000) } });
+    assert.equal((await submit('Bob')).json().ok, true);
+    for (const twin of ['Bob​', 'Bоb', 'bοb']) {
+      const r = await submit(twin);
+      assert.equal(r.json().ok, false, twin);
+      assert.match(r.json().message, /already countersigned/);
+    }
+    assert.equal(getPending(a.id)!.currentApprovals.length, 1);
+    assert.equal((await submit('bоt')).json().ok, false, 'requester look-alike ("bot" = agent "bot") refused');
+  });
+
+  await step('P0-5 SEC-7 a view stamp is single-use and bound to its reviewer', async () => {
+    const a = await propose({ description: 'stamps' });
+    const tAna = issueTicket(a.id, 'ana', reviewerKey('ana'));
+    const send = (body: Record<string, unknown>) => app.inject({ method: 'POST', url: `/approve/${a.id}/submit`, payload: { quizAnswer: sampleAnswer(getPending(a.id)!), scrolledToBottom: true, ...body } });
+    // A stamp opened for ben can't be used by ana; an unbound one can't be used with a ticket.
+    assert.equal((await send({ ticket: tAna, viewStamp: issueViewStamp(a.id, Date.now() - 45000, reviewerKey('ben')) })).statusCode, 403);
+    assert.equal((await send({ ticket: tAna, viewStamp: issueViewStamp(a.id, Date.now() - 45000) })).statusCode, 403);
+    // A failed submit (too fast) burns the stamp: waiting and resubmitting needs a fresh page.
+    const stamp = issueViewStamp(a.id, Date.now() - 2000, reviewerKey('ana'));
+    const fast = await send({ ticket: tAna, viewStamp: stamp });
+    assert.equal(fast.json().ok, false);
+    assert.match(fast.json().message, /at least/);
+    assert.equal((await send({ ticket: tAna, viewStamp: stamp })).statusCode, 409, 'reused stamp refused');
+    // The page served with the ticket carries a stamp bound to ana.
+    const page = (await app.inject({ url: `/approve/${a.id}?t=${encodeURIComponent(tAna)}` })).body;
+    const served = page.match(/id="viewStamp" value="([^"]+)"/)![1];
+    assert.equal(JSON.parse(Buffer.from(served.split('.')[0], 'base64url').toString()).r, 'ana');
+    const ok = await send({ ticket: tAna, viewStamp: issueViewStamp(a.id, Date.now() - 45000, reviewerKey('ana')) });
+    assert.equal(ok.json().ok, true, ok.json().message);
   });
 } finally { await app.close(); }
 

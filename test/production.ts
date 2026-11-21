@@ -7,10 +7,11 @@ import { tmpdir } from 'node:os';
 import { rmSync } from 'node:fs';
 process.env.SECRET_KEY = 'prod-test-secret-'.repeat(4);
 delete process.env.LITTI_ALLOW_SELF_ASSERTED;
+process.env.LITTI_ADMIN_KEY = 'admin-key';
 process.env.LITTI_DEPLOY_DIR = join(tmpdir(), `litti-prod-deploy-${process.pid}`);
 import { initDb, getPending, getSetting } from '../src/chain/db.js';
 import { buildServer, setNotifier } from '../src/approval/server.js';
-import { issueTicket, issueViewStamp } from '../src/approval/identity.js';
+import { issueTicket, issueViewStamp, reviewerKey } from '../src/approval/identity.js';
 import { checkProductionConfig } from '../src/config.js';
 import { sampleAnswer } from '../src/agents/challenges.js';
 
@@ -19,7 +20,7 @@ const room: string[] = [];
 setNotifier({ postCard: (c) => { room.push(`CARD ${c.id}`); }, postMessage: (m) => { room.push(m); } });
 const app = buildServer();
 const reviewLink = (id: string, reviewer: string) =>
-  app.inject({ method: 'POST', url: `/api/actions/${id}/review-link`, payload: { reviewer } });
+  app.inject({ method: 'POST', url: `/api/actions/${id}/review-link`, headers: { 'x-litti-admin-key': 'admin-key' }, payload: { reviewer } });
 
 const DIFF = '--- a/src/pay.ts\n+++ b/src/pay.ts\n@@ -1 +1 @@\n-export function chargeCard(a) { return a; }\n+export function chargeCard(a) { return a * 100; }';
 const propose = async (headers: Record<string, string> = {}) => (await app.inject({
@@ -30,7 +31,8 @@ const propose = async (headers: Record<string, string> = {}) => (await app.injec
 const submit = (id: string, body: Record<string, unknown>, headers: Record<string, string> = {}, remoteAddress = '10.0.0.7') =>
   app.inject({ method: 'POST', url: `/approve/${id}/submit`, headers, remoteAddress, payload: { scrolledToBottom: true, ...body } });
 const answer = (id: string) => sampleAnswer(getPending(id)!);
-const stamp = (id: string, agoMs: number) => issueViewStamp(id, Date.now() - agoMs);
+// A page opened `agoMs` ago, for `who` (the reviewer the page was served to, if known).
+const stamp = (id: string, agoMs: number, who?: string) => issueViewStamp(id, Date.now() - agoMs, who ? reviewerKey(who) : undefined);
 
 let passed = 0;
 async function step(name: string, fn: () => Promise<void>) { await fn(); passed++; console.log(`  ✓ ${name}`); }
@@ -81,7 +83,7 @@ try {
     const { id } = await propose();
     const page = (await app.inject({ url: `/approve/${id}` })).body;
     assert.ok(page.includes(`value="${me}" readonly`), 'page shows the OS user, locked');
-    const r = await submit(id, { approver: 'mallory', quizAnswer: answer(id), viewStamp: stamp(id, 20000) }, {}, '127.0.0.1');
+    const r = await submit(id, { approver: 'mallory', quizAnswer: answer(id), viewStamp: stamp(id, 20000, me) }, {}, '127.0.0.1');
     assert.equal(r.json().ok, true, r.json().message);
     assert.equal(getPending(id)!.currentApprovals[0].approver, me);
     assert.equal(getPending(id)!.currentApprovals[0].identitySource, 'local');
@@ -117,7 +119,7 @@ try {
     const page = (await app.inject({ url: `/approve/${id}?t=${encodeURIComponent(t)}` })).body;
     assert.match(page, /value="priya" readonly/);
     // Typed name is ignored; identity comes from the ticket.
-    const r = (await submit(id, { approver: 'someone-else', ticket: t, quizAnswer: answer(id), viewStamp: stamp(id, 15000) })).json();
+    const r = (await submit(id, { approver: 'someone-else', ticket: t, quizAnswer: answer(id), viewStamp: stamp(id, 15000, 'priya') })).json();
     assert.equal(r.ok, true, r.message);
     assert.ok(room.some(m => m.includes('Reviewed by priya')));
   });
@@ -132,7 +134,6 @@ try {
   await step('agents cannot mint review links once LITTI_ADMIN_KEY is set; inbox needs SSO', async () => {
     const { id } = await propose();
     process.env.LITTI_API_KEY = 'agent-key';
-    process.env.LITTI_ADMIN_KEY = 'admin-key';
     try {
       const asAgent = await app.inject({ method: 'POST', url: `/api/actions/${id}/review-link`, headers: { 'x-litti-key': 'agent-key' }, payload: { reviewer: 'alice' } });
       assert.equal(asAgent.statusCode, 401);
@@ -143,7 +144,6 @@ try {
       assert.equal((await app.inject({ url: '/', headers: { 'x-forwarded-email': 'lee@acme.com' } })).statusCode, 200);
     } finally {
       delete process.env.LITTI_API_KEY;
-      delete process.env.LITTI_ADMIN_KEY;
       delete process.env.LITTI_IDENTITY_HEADER;
     }
   });
@@ -163,7 +163,7 @@ try {
     const { id } = await propose();
     const t = issueTicket(id, 'sam', '@s');
     // Browser claims 60s but the page was opened 1s ago.
-    const fast = (await submit(id, { ticket: t, quizAnswer: answer(id), timeSpentMs: 60000, viewStamp: stamp(id, 1000) })).json();
+    const fast = (await submit(id, { ticket: t, quizAnswer: answer(id), timeSpentMs: 60000, viewStamp: stamp(id, 1000, '@s') })).json();
     assert.equal(fast.ok, false);
     assert.match(fast.message, /at least 10s/);
     assert.equal((await submit(id, { ticket: t, quizAnswer: answer(id), timeSpentMs: 60000 })).statusCode, 400);
@@ -174,7 +174,7 @@ try {
   await step('SSO header identity (LITTI_IDENTITY_HEADER)', async () => {
     process.env.LITTI_IDENTITY_HEADER = 'x-forwarded-email';
     const { id } = await propose();
-    const r = (await submit(id, { quizAnswer: answer(id), viewStamp: stamp(id, 15000) }, { 'x-forwarded-email': 'lee@acme.com' })).json();
+    const r = (await submit(id, { quizAnswer: answer(id), viewStamp: stamp(id, 15000, 'lee@acme.com') }, { 'x-forwarded-email': 'lee@acme.com' })).json();
     assert.equal(r.ok, true, r.message);
     assert.ok(room.some(m => m.includes('Reviewed by lee@acme.com')));
     delete process.env.LITTI_IDENTITY_HEADER;
@@ -192,7 +192,7 @@ try {
 
     const { id } = await propose(key);
     const t = issueTicket(id, 'sam', '@s');
-    const r = (await submit(id, { ticket: t, quizAnswer: answer(id), viewStamp: stamp(id, 15000) })).json();
+    const r = (await submit(id, { ticket: t, quizAnswer: answer(id), viewStamp: stamp(id, 15000, '@s') })).json();
     assert.equal(r.ok, true, r.message);
     assert.equal(received.length, 1);
     const expected = 'sha256=' + createHmac('sha256', process.env.SECRET_KEY!).update(received[0].body).digest('hex');
@@ -217,7 +217,7 @@ try {
   await step('rubber-stamp penalty survives a restart (persisted)', async () => {
     const { id } = await propose();
     const t = issueTicket(id, 'zed', '@z');
-    await submit(id, { ticket: t, quizAnswer: 'definitely wrong', viewStamp: stamp(id, 15000) });
+    await submit(id, { ticket: t, quizAnswer: 'definitely wrong', viewStamp: stamp(id, 15000, '@z') });
     assert.equal(getSetting('pending_tier_bump'), '1');
     const next = await propose();
     assert.equal(next.tier, 2, 'tier 1 edit bumped to tier 2');

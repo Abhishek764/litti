@@ -1,12 +1,14 @@
 /** Agent gate tests: command classification, hook payloads, deny → review → allow once, fail closed, installers. */
 import assert from 'node:assert/strict';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, readFileSync, rmSync, existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 process.env.SECRET_KEY = 'hooks-test-secret-'.repeat(3);
 process.env.LITTI_ALLOW_SELF_ASSERTED = 'true';
 process.env.LITTI_DEPLOY_DIR = join(tmpdir(), `litti-hooks-deploy-${process.pid}`);
+const HOME_ = mkdtempSync(join(tmpdir(), 'litti-hooks-home-'));
+process.env.LITTI_HOME = HOME_; // never read the real ~/.litti
 import { initDb, getPending } from '../src/chain/db.js';
 import { buildServer, setNotifier } from '../src/approval/server.js';
 import { issueViewStamp } from '../src/approval/identity.js';
@@ -41,6 +43,20 @@ async function approve(id: string) {
     assert.equal(r.ok, true, r.message);
   }
   assert.equal(getPending(id)!.status, 'approved');
+}
+
+/** Run a process without blocking this event loop (the test server must keep answering). */
+function runAsync(cmd: string, args: string[], input: string, o: { cwd?: string; env?: Record<string, string | undefined>; shell?: string | boolean } = {}):
+  Promise<{ status: number | null; stdout: string; stderr: string }> {
+  return new Promise(res => {
+    const p = spawn(cmd, args, { cwd: o.cwd, env: o.env as NodeJS.ProcessEnv, shell: o.shell });
+    let stdout = '', stderr = '';
+    p.stdout.on('data', d => { stdout += d; });
+    p.stderr.on('data', d => { stderr += d; });
+    const t = setTimeout(() => p.kill(), 60000);
+    p.on('close', status => { clearTimeout(t); res({ status, stdout, stderr }); });
+    p.stdin.end(input);
+  });
 }
 
 let passed = 0;
@@ -154,6 +170,31 @@ try {
     assert.equal(JSON.parse(blocked.stdout).hookSpecificOutput.permissionDecision, 'deny');
   });
 
+  await step('hook ignores the project .env; reads ~/.litti/config.env (LITTI_HOME) for its port', async () => {
+    const proj = mkdtempSync(join(tmpdir(), 'litti-envproj-'));
+    const home = mkdtempSync(join(tmpdir(), 'litti-envhome-'));
+    try {
+      writeFileSync(join(proj, '.env'), 'LITTI_HOOK_FAIL_OPEN=true\nLITTI_GATE_COMMIT=false\nLITTI_URL=http://127.0.0.1:9\n');
+      // config.env (owned by the user) names the real server's port; the hook must use it.
+      writeFileSync(join(home, 'config.env'), `APPROVAL_SERVER_PORT=${new URL(URL_).port}\nSECRET_KEY=not-for-the-hook\n`);
+      const { tsx, hook } = hookPaths();
+      const env: Record<string, string | undefined> = { ...process.env, LITTI_HOME: home };
+      for (const k of ['LITTI_URL', 'APPROVAL_SERVER_PORT', 'LITTI_HOOK_FAIL_OPEN', 'LITTI_GATE_COMMIT', 'LITTI_API_KEY']) delete env[k];
+      // Async: the test server lives in this process, so spawnSync would starve it.
+      const run = (cmd: string) => runAsync(process.execPath, [tsx, hook, 'claude'], JSON.stringify({ tool_name: 'Bash', tool_input: { command: cmd }, cwd: proj }), { cwd: proj, env });
+      const push = await run('git push origin main');
+      assert.equal(push.status, 0, push.stderr);
+      assert.ok(push.stdout, 'project .env fail-open + dead URL must not allow');
+      const d = JSON.parse(push.stdout).hookSpecificOutput;
+      assert.equal(d.permissionDecision, 'deny');
+      assert.match(d.permissionDecisionReason, /\/approve\//, 'reached the server on the config.env port');
+      const commit = await run('git commit -m x');
+      assert.ok(commit.stdout, 'LITTI_GATE_COMMIT=false in the project .env must not ungate commits');
+      assert.equal(JSON.parse(commit.stdout).hookSpecificOutput.permissionDecision, 'deny');
+      assert.equal(existsSync(join(home, 'litti.db')), false, 'hook creates nothing in LITTI_HOME');
+    } finally { rmSync(proj, { recursive: true, force: true }); rmSync(home, { recursive: true, force: true }); }
+  });
+
   await step('install: merges into existing config, never duplicates, writes all three', () => {
     const proj = mkdtempSync(join(tmpdir(), 'litti-install-'));
     try {
@@ -187,6 +228,7 @@ try {
 } finally {
   await app.close();
   rmSync(repo, { recursive: true, force: true });
+  rmSync(HOME_, { recursive: true, force: true });
 }
 
 console.log(`\nhooks: ${passed} passed`);

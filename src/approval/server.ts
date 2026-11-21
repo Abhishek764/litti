@@ -12,7 +12,7 @@ import { assessRisk } from '../rules/tiering.js';
 import { detectRubberStamp } from '../rules/rubberstamp.js';
 import { renderApprovalPage } from './page.js';
 import { createToken, validateToken } from './token.js';
-import { allowSelfAsserted, elapsedSinceView, issueTicket, issueViewStamp, resolveReviewer, verifyTicket } from './identity.js';
+import { allowSelfAsserted, elapsedSinceView, issueTicket, issueViewStamp, localMode, localReviewerName, resolveReviewer, verifyTicket } from './identity.js';
 import { renderInbox } from './inbox.js';
 import { registerChangesRoutes } from '../changes/routes.js';
 import { registerConnectRoutes } from '../connect/routes.js';
@@ -166,6 +166,16 @@ function adminKeyOk(headers: Record<string, unknown>): boolean {
   return apiKeyOk(headers['x-litti-key']);
 }
 
+/** Local sign-in uses the OS user; an agent with that same name could approve itself. */
+function localClash(agent: string): string {
+  return `🔒 The agent is named "${agent}", which is also the reviewer Litti signs you in as on this machine. ` +
+    'The requester can never approve their own action: give the agent another name (LITTI_AGENT_NAME) ' +
+    'or set LITTI_LOCAL_REVIEWER in ~/.litti/config.env.';
+}
+function agentIsLocalReviewer(agent: string): boolean {
+  return localMode() && normName(agent) === normName(localReviewerName());
+}
+
 /** Same person, however they type their name. */
 const normName = (s: string) => s.normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase();
 
@@ -253,8 +263,9 @@ export function buildServer(opts: { logger?: boolean } = {}): FastifyInstance {
   app.get<{ Params: { id: string }; Querystring: { t?: string } }>('/approve/:id', (req, reply) => {
     const pending = getPending(req.params.id);
     if (!pending) { reply.code(404).type('text/html').send('<h1>Action not found</h1>'); return; }
-    const who = resolveReviewer(req.headers, req.query.t || undefined, undefined, pending.id);
-    const known = 'name' in who ? who.name : '';
+    const who = resolveReviewer(req.headers, req.query.t || undefined, undefined, pending.id, req.ip);
+    // Demo mode keeps typed names; everywhere else a known reviewer is locked in.
+    const known = 'name' in who && !(who.source === 'local' && allowSelfAsserted()) ? who.name : '';
     reply.type('text/html').header('cache-control', 'no-store').send(renderApprovalPage({
       card: pending.actionCard,
       tier: pending.tier,
@@ -277,7 +288,7 @@ export function buildServer(opts: { logger?: boolean } = {}): FastifyInstance {
     const body = req.body ?? {};
     const card = pending.actionCard;
 
-    const who = resolveReviewer(req.headers, body.ticket || undefined, body.approver, pending.id);
+    const who = resolveReviewer(req.headers, body.ticket || undefined, body.approver, pending.id, req.ip);
     if ('error' in who) return reply.code(401).send({ ok: false, message: `🔐 ${who.error.replace('<id>', pending.id)}` });
 
     // Review time is measured by the server from the signed page-open stamp.
@@ -297,7 +308,9 @@ export function buildServer(opts: { logger?: boolean } = {}): FastifyInstance {
     const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
     // Separation of duties: the requester can't approve, and nobody counts twice.
-    if (same(sub.approver, card.agent)) return { ok: false, message: '🔒 The requester cannot approve their own action.' };
+    if (same(sub.approver, card.agent)) {
+      return { ok: false, message: who.source === 'local' ? localClash(card.agent) : '🔒 The requester cannot approve their own action.' };
+    }
     if (pending.currentApprovals.some(a => same(a.approver, sub.approver))) {
       return { ok: false, message: `🔒 ${sub.approver} already countersigned. Tier ${pending.tier} needs ${pending.requiredApprovers} different reviewers.` };
     }
@@ -361,6 +374,7 @@ export function buildServer(opts: { logger?: boolean } = {}): FastifyInstance {
       reversible: b.reversible ?? true,
       rollbackPlan: String(b.rollbackPlan ?? '').slice(0, 2000),
     });
+    if (agentIsLocalReviewer(card.agent)) return reply.code(400).send({ ok: false, message: localClash(card.agent) });
     const { id, url, tier } = registerPending(card, baseUrlFor(req));
 
     // Tier 0 (read-only) is auto-approved: logged and chained, no reviewers.
@@ -394,6 +408,7 @@ export function buildServer(opts: { logger?: boolean } = {}): FastifyInstance {
       reversible: b.reversible ?? false,
       rollbackPlan: String(b.rollbackPlan ?? '').slice(0, 2000),
     });
+    if (agentIsLocalReviewer(card.agent)) return reply.code(400).send({ ok: false, decision: 'deny', message: localClash(card.agent) });
     const base = baseUrlFor(req);
     const denyMsg = (p: { id: string; tier: number; requiredApprovers: number; approvals: number }, url: string, fresh: boolean) => [
       `🔒 Litti: this command needs human review before it runs (Tier ${p.tier} · ${p.approvals}/${p.requiredApprovers} reviewer(s) so far).`,

@@ -29,6 +29,8 @@ SECRET_KEY=${secret}
 # PUBLIC_URL=https://litti.yourco.com
 # LITTI_API_KEY=
 # LITTI_ADMIN_KEY=
+# Who you are when you review locally (default: your OS user name).
+# LITTI_LOCAL_REVIEWER=
 # LITTI_CHALLENGES=quiz,spot-line,type-in,canary,count,explain
 `;
 

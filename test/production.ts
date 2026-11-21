@@ -26,8 +26,9 @@ const propose = async (headers: Record<string, string> = {}) => (await app.injec
   method: 'POST', url: '/api/actions', headers,
   payload: { agent: 'coder-bot', action: 'edit', description: 'Charge in cents', diff: DIFF, touchedPaths: ['src/pay.ts'] },
 })).json();
-const submit = (id: string, body: Record<string, unknown>, headers: Record<string, string> = {}) =>
-  app.inject({ method: 'POST', url: `/approve/${id}/submit`, headers, payload: { scrolledToBottom: true, ...body } });
+// Reviewers come from another machine unless a test says otherwise: on this machine, local mode signs in the OS user.
+const submit = (id: string, body: Record<string, unknown>, headers: Record<string, string> = {}, remoteAddress = '10.0.0.7') =>
+  app.inject({ method: 'POST', url: `/approve/${id}/submit`, headers, remoteAddress, payload: { scrolledToBottom: true, ...body } });
 const answer = (id: string) => sampleAnswer(getPending(id)!);
 const stamp = (id: string, agoMs: number) => issueViewStamp(id, Date.now() - agoMs);
 
@@ -72,6 +73,34 @@ try {
     assert.match(String(r.headers['content-security-policy']), /frame-ancestors 'none'/);
     assert.equal(r.headers['cache-control'], 'no-store');
     assert.equal((await app.inject({ url: '/healthz' })).json().ok, true);
+  });
+
+  await step('D2 local mode: the OS user is signed in automatically; typed names ignored; agent named like the user refused', async () => {
+    const { userInfo } = await import('node:os');
+    const me = userInfo().username;
+    const { id } = await propose();
+    const page = (await app.inject({ url: `/approve/${id}` })).body;
+    assert.ok(page.includes(`value="${me}" readonly`), 'page shows the OS user, locked');
+    const r = await submit(id, { approver: 'mallory', quizAnswer: answer(id), viewStamp: stamp(id, 20000) }, {}, '127.0.0.1');
+    assert.equal(r.json().ok, true, r.json().message);
+    assert.equal(getPending(id)!.currentApprovals[0].approver, me);
+    assert.equal(getPending(id)!.currentApprovals[0].identitySource, 'local');
+    process.env.LITTI_LOCAL_REVIEWER = 'Dana';
+    try {
+      const b = await propose();
+      assert.match((await app.inject({ url: `/approve/${b.id}` })).body, /value="Dana" readonly/);
+      const clash = await app.inject({ method: 'POST', url: '/api/actions', payload: { agent: 'dana', action: 'edit', description: 'x', diff: DIFF, touchedPaths: ['a.ts'] } });
+      assert.equal(clash.statusCode, 400);
+      assert.match(clash.json().message, /LITTI_AGENT_NAME/);
+      const gate = await app.inject({ method: 'POST', url: '/api/gate', payload: { agent: 'Dana', action: 'edit', description: 'x', diff: DIFF } });
+      assert.equal(gate.statusCode, 400);
+      assert.equal(gate.json().decision, 'deny');
+    } finally { delete process.env.LITTI_LOCAL_REVIEWER; }
+    process.env.LITTI_API_KEY = 'k';
+    try {
+      const { id: t } = await propose({ 'x-litti-key': 'k' });
+      assert.equal((await submit(t, { quizAnswer: answer(t), viewStamp: stamp(t, 20000) }, {}, '127.0.0.1')).statusCode, 401, 'team mode: no local sign-in');
+    } finally { delete process.env.LITTI_API_KEY; }
   });
 
   await step('typed names are rejected in production', async () => {

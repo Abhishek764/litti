@@ -6,11 +6,14 @@
  *  2. Review ticket: a signed, expiring link bound to one action and one reviewer,
  *     issued with `litti review <id> --as <name>` or POST /api/actions/:id/review-link.
  *  3. Self-asserted name: only when LITTI_ALLOW_SELF_ASSERTED=true (demo default).
+ *  4. Local mode (no API key, no SSO header, loopback server and request): the OS user,
+ *     or LITTI_LOCAL_REVIEWER from ~/.litti/config.env. A solo developer never types a name.
  *
  * Review time is never trusted from the browser: the page carries a signed
  * "opened at" stamp, and the server measures elapsed time itself.
  */
 import { createHmac, timingSafeEqual } from 'node:crypto';
+import { userInfo } from 'node:os';
 
 const TICKET_TTL_MS = 30 * 60 * 1000;
 const VIEW_TTL_MS = 6 * 60 * 60 * 1000;
@@ -64,7 +67,27 @@ export function elapsedSinceView(token: unknown, actionId: string, now = Date.no
   return now - v.t;
 }
 
-export type IdentitySource = 'sso' | 'ticket' | 'self-asserted';
+export type IdentitySource = 'sso' | 'ticket' | 'self-asserted' | 'local';
+
+const LOOPBACK_HOSTS = ['127.0.0.1', 'localhost', '::1'];
+const LOOPBACK_IPS = ['127.0.0.1', '::1', '::ffff:127.0.0.1'];
+
+/** Personal setup: no agent key, no SSO header, listening only on this machine. */
+export function localMode(env = process.env): boolean {
+  return !env.LITTI_API_KEY && !env.LITTI_API_KEYS && !env.LITTI_IDENTITY_HEADER && LOOPBACK_HOSTS.includes(env.HOST || '127.0.0.1');
+}
+
+/** The person at this machine: LITTI_LOCAL_REVIEWER, else the OS user name. */
+export function localReviewerName(env = process.env): string {
+  const set = env.LITTI_LOCAL_REVIEWER?.trim();
+  if (set) return set.slice(0, 64);
+  try { return userInfo().username.slice(0, 64) || 'local-user'; } catch { return 'local-user'; }
+}
+
+/** Local sign-in applies only in local mode and only to requests from this machine. */
+export function localReviewer(ip: string | undefined, env = process.env): string | null {
+  return localMode(env) && ip !== undefined && LOOPBACK_IPS.includes(ip) ? localReviewerName(env) : null;
+}
 
 /** Resolve who is reviewing, from headers / ticket / typed name, per configuration. */
 export function resolveReviewer(
@@ -72,6 +95,7 @@ export function resolveReviewer(
   ticket: unknown,
   typedName: unknown,
   actionId: string,
+  ip?: string,
 ): { name: string; source: IdentitySource } | { error: string } {
   const header = process.env.LITTI_IDENTITY_HEADER?.toLowerCase();
   if (header) {
@@ -85,6 +109,8 @@ export function resolveReviewer(
   if (allowSelfAsserted() && typeof typedName === 'string' && typedName.trim()) {
     return { name: typedName.trim().slice(0, 64), source: 'self-asserted' };
   }
+  const local = localReviewer(ip);
+  if (local) return { name: local, source: 'local' };
   return { error: 'Reviewer identity required. Get your personal review link with `litti review <id> --as <you>`.' };
 }
 

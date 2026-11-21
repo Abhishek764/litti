@@ -78,7 +78,7 @@ export interface ApprovalToken {
   signature: string;
 }
 
-export type Outcome = 'approved' | 'rejected' | 'rubber-stamped' | 'auto-approved';
+export type Outcome = 'approved' | 'rejected' | 'rubber-stamped' | 'auto-approved' | 'deploy-failed';
 
 /** A hash-chained decision record. */
 export interface Receipt {
@@ -112,9 +112,14 @@ export interface PendingAction {
   currentApprovals: ApprovalSubmission[];
   quiz: Quiz;
   quizAnswer: string;
-  status: 'pending' | 'approved' | 'rejected';
+  /** deploy-failed: approved by reviewers, but the executor could not deliver it (retry it). */
+  status: 'pending' | 'approved' | 'rejected' | 'deploy-failed';
   createdAt: string;
+  /** Who created it: the agent hook gate, the agent API, or the Changes page. Older rows: unknown. */
+  source?: ActionSource;
 }
+
+export type ActionSource = 'gate' | 'api' | 'changes';
 
 /** Something that happened to an action after its card was posted. */
 export interface ActionEvent {

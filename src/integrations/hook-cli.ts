@@ -10,9 +10,27 @@
  *  - opencode:       {"decision":"allow"|"deny","reason":"…"} on stdout (the plugin throws on deny).
  *
  * Any internal error denies (fail closed) unless LITTI_HOOK_FAIL_OPEN=true.
+ *
+ * Settings come only from the real environment and ~/.litti/config.env (LITTI_HOME). The
+ * project's own .env is never read: the agent can write it, so it must not steer the gate.
  */
-import 'dotenv/config';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { parse } from 'dotenv';
+import { littiHome } from '../home.js';
 import { extractCommand, gate, type GateDecision } from './gate.js';
+
+/** The settings the hook uses. Nothing else (e.g. SECRET_KEY) is loaded into the hook. */
+const HOOK_KEYS = ['LITTI_URL', 'APPROVAL_SERVER_PORT', 'LITTI_API_KEY', 'LITTI_HOOK_FAIL_OPEN', 'LITTI_GATE_COMMIT', 'LITTI_GATE_PATTERNS', 'LITTI_AGENT_NAME'];
+
+/** Fill hook settings from ~/.litti/config.env; the real environment wins. Creates nothing. */
+export function loadHookEnv(env: NodeJS.ProcessEnv = process.env): void {
+  const file = join(littiHome(env), 'config.env');
+  if (!existsSync(file)) return;
+  let values: Record<string, string> = {};
+  try { values = parse(readFileSync(file)); } catch { return; }
+  for (const k of HOOK_KEYS) if (env[k] === undefined && values[k] !== undefined) env[k] = values[k];
+}
 
 function readStdin(): Promise<string> {
   return new Promise(resolve => {
@@ -44,17 +62,30 @@ export async function runHook(flavor: string, raw: string, cwdFallback = process
 
 const isMain = process.argv[1] && /hook-cli\.(ts|js|mjs)$/.test(process.argv[1]);
 if (isMain) {
+  loadHookEnv();
   const flavor = (process.argv[2] || 'claude').toLowerCase();
+  let done = false;
+  const finish = (out: string) => {
+    if (done) return;
+    done = true;
+    if (out) process.stdout.write(out, () => process.exit(0));
+    else process.exit(0);
+  };
+  // Overall deadline, well under the agent's 30 s hook timeout (a timed-out hook can fail open):
+  // slow git calls plus the server round trip must end in a deny, never in a timeout.
+  const deadlineMs = Number(process.env.LITTI_HOOK_DEADLINE_MS) || 20000;
+  setTimeout(() => finish(formatOutput(flavor, {
+    decision: 'deny',
+    reason: `🔒 Litti could not decide within ${Math.round(deadlineMs / 1000)} s (slow git or server). Blocked to be safe; ask the user to check Litti, then try again.`,
+  })), deadlineMs).unref();
   readStdin()
     .then(raw => runHook(flavor, raw))
-    .then(out => { if (out) process.stdout.write(out); process.exit(0); })
+    .then(finish)
     .catch(err => {
       const failOpen = process.env.LITTI_HOOK_FAIL_OPEN === 'true';
       const d: GateDecision = failOpen
         ? { decision: 'allow', reason: '' }
         : { decision: 'deny', reason: `🔒 Litti hook error (${err instanceof Error ? err.message : String(err)}). Blocked to be safe; ask the user to check Litti.` };
-      const out = formatOutput(flavor, d);
-      if (out) process.stdout.write(out);
-      process.exit(0);
+      finish(formatOutput(flavor, d));
     });
 }

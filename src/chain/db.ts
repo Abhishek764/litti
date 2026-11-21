@@ -2,7 +2,7 @@
 import Database from 'better-sqlite3';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import type { Receipt, PendingAction, Quiz } from '../types.js';
+import type { Receipt, PendingAction, Quiz, ActionSource } from '../types.js';
 
 let db: Database.Database;
 
@@ -63,6 +63,7 @@ export function initDb(path = 'litti.db'): Database.Database {
   const cols = (db.prepare('PRAGMA table_info(pending_actions)').all() as { name: string }[]).map(c => c.name);
   if (!cols.includes('approval_token')) db.exec('ALTER TABLE pending_actions ADD COLUMN approval_token TEXT');
   if (!cols.includes('challenge')) db.exec('ALTER TABLE pending_actions ADD COLUMN challenge TEXT');
+  if (!cols.includes('source')) db.exec('ALTER TABLE pending_actions ADD COLUMN source TEXT');
   const rcols = (db.prepare('PRAGMA table_info(receipts)').all() as { name: string }[]).map(c => c.name);
   if (!rcols.includes('format')) db.exec('ALTER TABLE receipts ADD COLUMN format INTEGER');
   return db;
@@ -135,8 +136,8 @@ export function corruptReceipt(id: string, badHash: string): void {
 /** Persist a pending action awaiting approval. */
 export function insertPending(p: PendingAction): void {
   getDb().prepare(
-    `INSERT INTO pending_actions (id, action_card, tier, required_approvers, current_approvals, quiz_question, quiz_options, quiz_answer, challenge, status, created_at)
-     VALUES (@id, @actionCard, @tier, @requiredApprovers, @currentApprovals, @quizQuestion, @quizOptions, @quizAnswer, @challenge, @status, @createdAt)`
+    `INSERT INTO pending_actions (id, action_card, tier, required_approvers, current_approvals, quiz_question, quiz_options, quiz_answer, challenge, status, created_at, source)
+     VALUES (@id, @actionCard, @tier, @requiredApprovers, @currentApprovals, @quizQuestion, @quizOptions, @quizAnswer, @challenge, @status, @createdAt, @source)`
   ).run({
     id: p.id,
     actionCard: JSON.stringify(p.actionCard),
@@ -149,6 +150,7 @@ export function insertPending(p: PendingAction): void {
     challenge: JSON.stringify({ kind: p.quiz.kind ?? 'quiz', subject: p.quiz.subject }),
     status: p.status,
     createdAt: p.createdAt,
+    source: p.source ?? null,
   });
 }
 
@@ -174,6 +176,7 @@ export function getPending(id: string): PendingAction | null {
     quizAnswer: row.quiz_answer,
     status: row.status,
     createdAt: row.created_at,
+    ...(row.source ? { source: row.source as ActionSource } : {}),
   };
 }
 
@@ -210,12 +213,15 @@ export function listPending(): PendingAction[] {
   return rows.map(r => getPending(r.id)!).filter(Boolean);
 }
 
-/** Most recent action for an exact diff (any status), created within `withinMs`. */
-export function latestByDiffHash(diffHash: string, withinMs = 24 * 3600 * 1000): PendingAction | null {
+/**
+ * Most recent action for an exact diff (any status) created by `source` within `withinMs`.
+ * The gate passes 'gate': an action an agent declared itself through the API must never count.
+ */
+export function latestByDiffHash(diffHash: string, source: ActionSource, withinMs = 24 * 3600 * 1000): PendingAction | null {
   const since = new Date(Date.now() - withinMs).toISOString();
   const row = getDb().prepare(
-    "SELECT id FROM pending_actions WHERE json_extract(action_card, '$.diffHash') = ? AND created_at >= ? ORDER BY created_at DESC, rowid DESC LIMIT 1",
-  ).get(diffHash, since) as { id: string } | undefined;
+    "SELECT id FROM pending_actions WHERE json_extract(action_card, '$.diffHash') = ? AND source = ? AND created_at >= ? ORDER BY created_at DESC, rowid DESC LIMIT 1",
+  ).get(diffHash, source, since) as { id: string } | undefined;
   return row ? getPending(row.id) : null;
 }
 

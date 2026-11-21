@@ -4,12 +4,18 @@
  * Wires the Litti gate into a project's agent config. Existing settings are kept;
  * an earlier Litti entry is replaced, never duplicated.
  *
- *  - Claude Code: .claude/settings.json → hooks.PreToolUse (matcher "Bash")
- *  - Codex:       .codex/hooks.json     → hooks.PreToolUse (hooks may need enabling in Codex config)
+ *  - Claude Code: .claude/settings.json → hooks.PreToolUse (matcher "Bash|PowerShell"), onFailure "block"
+ *  - Codex:       .codex/hooks.json     → hooks.PreToolUse (matcher "^Bash$"); trust it with /hooks
+ *
+ * Fail closed: if the hook can't run at all (node missing, Litti moved or uninstalled, a crash),
+ * the shell form ends in `|| exit 2`, which both agents treat as "block". Claude Code also gets
+ * `onFailure: "block"` (v2.1.295+), which covers timeouts. On Windows without Git Bash, Claude
+ * Code runs hooks in PowerShell, where `||` doesn't parse (5.1), so there we write exec form
+ * (`command: "node", args: [...]`), which needs no shell.
  *  - OpenCode:    .opencode/plugin/litti.ts (throws in tool.execute.before to block)
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { delimiter, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export type AgentName = 'claude' | 'codex' | 'opencode';
@@ -36,21 +42,46 @@ export function hookArgv(root = LITTI_ROOT, compiledRun = import.meta.url.endsWi
   return compiledRun && existsSync(p.compiled) ? [p.compiled] : [p.tsx, p.hook];
 }
 
+/** Shell form: any failure to run the hook exits 2, which blocks the tool call. */
 export function hookCommand(flavor: AgentName, root = LITTI_ROOT): string {
-  return `node ${hookArgv(root).map(a => `"${a}"`).join(' ')} ${flavor}`;
+  return `node ${hookArgv(root).map(a => `"${a}"`).join(' ')} ${flavor} || exit 2`;
 }
 
-const isLittiHook = (h: any) => typeof h?.command === 'string' && /hook-cli\.(ts|js)/.test(h.command);
+/** Git Bash, the shell Claude Code uses for hooks on Windows when it is installed. */
+export function gitBashPath(env = process.env): string | null {
+  const fromPath = (env.PATH ?? env.Path ?? '').split(delimiter)
+    .filter(p => /[\\/]git[\\/](cmd|bin)$/i.test(p)).map(p => join(p, '..', 'bin', 'bash.exe'));
+  const candidates = [
+    env.CLAUDE_CODE_GIT_BASH_PATH,
+    'C:/Program Files/Git/bin/bash.exe',
+    'C:/Program Files (x86)/Git/bin/bash.exe',
+    env.LOCALAPPDATA ? join(env.LOCALAPPDATA, 'Programs', 'Git', 'bin', 'bash.exe') : undefined,
+    ...fromPath,
+  ];
+  return candidates.find((p): p is string => typeof p === 'string' && p !== '' && existsSync(p)) ?? null;
+}
+
+/** The Claude Code hook entry. Exec form where Claude Code would run hooks in PowerShell. */
+export function claudeHook(root = LITTI_ROOT, execForm = process.platform === 'win32' && !gitBashPath()): Record<string, unknown> {
+  const base = { type: 'command', timeout: 30, onFailure: 'block' };
+  return execForm
+    ? { ...base, command: 'node', args: [...hookArgv(root), 'claude'] }
+    : { ...base, command: hookCommand('claude', root) };
+}
+
+const isLittiHook = (h: any) =>
+  /hook-cli\.(ts|js)/.test([h?.command, ...(Array.isArray(h?.args) ? h.args : [])].map(String).join(' '));
 
 /** Add (or replace) the Litti PreToolUse hook in a Claude-Code-style hooks object. */
-export function mergeHooks(config: any, command: string, matcher: string | undefined): any {
+export function mergeHooks(config: any, command: string | Record<string, unknown>, matcher: string | undefined): any {
   const out = config && typeof config === 'object' && !Array.isArray(config) ? { ...config } : {};
   out.hooks = out.hooks && typeof out.hooks === 'object' ? { ...out.hooks } : {};
   const groups: any[] = Array.isArray(out.hooks.PreToolUse) ? out.hooks.PreToolUse : [];
   const kept = groups
     .map(g => ({ ...g, hooks: Array.isArray(g?.hooks) ? g.hooks.filter((h: any) => !isLittiHook(h)) : [] }))
     .filter(g => g.hooks.length > 0);
-  const entry: any = { hooks: [{ type: 'command', command, timeout: 30 }] };
+  const hook = typeof command === 'string' ? { type: 'command', command, timeout: 30 } : command;
+  const entry: any = { hooks: [hook] };
   if (matcher) entry.matcher = matcher;
   out.hooks.PreToolUse = [...kept, entry];
   return out;
@@ -79,7 +110,7 @@ export const Litti = async ({ directory }: { directory: string }) => ({
   "tool.execute.before": async (input: { tool: string }, output: { args: any }) => {
     if (input.tool !== "bash") return;
     const payload = JSON.stringify({ tool: "bash", args: output.args, cwd: directory });
-    const r = spawnSync("node", [...HOOK_ARGS, "opencode"], { input: payload, encoding: "utf8", timeout: 20000 });
+    const r = spawnSync("node", [...HOOK_ARGS, "opencode"], { input: payload, encoding: "utf8", timeout: 25000 });
     let d: { decision?: string; reason?: string } = {};
     try { d = JSON.parse(r.stdout || "{}"); } catch { d = {}; }
     // Anything but an explicit allow blocks (fail closed).
@@ -90,21 +121,21 @@ export const Litti = async ({ directory }: { directory: string }) => ({
 }
 
 /** Install the gate for one agent into a project. Returns the file written and any follow-up notes. */
-export function install(agent: AgentName, projectDir: string, root = LITTI_ROOT): { file: string; notes: string[] } {
+export function install(agent: AgentName, projectDir: string, root = LITTI_ROOT, opts: { execForm?: boolean } = {}): { file: string; notes: string[] } {
   const dir = resolve(projectDir);
   if (agent === 'claude') {
     const file = join(dir, '.claude', 'settings.json');
-    writeJson(file, mergeHooks(readJson(file), hookCommand('claude', root), 'Bash'));
+    writeJson(file, mergeHooks(readJson(file), claudeHook(root, opts.execForm), 'Bash|PowerShell'));
     return { file, notes: ['Restart Claude Code (or run /hooks) so it loads the hook.'] };
   }
   if (agent === 'codex') {
     const file = join(dir, '.codex', 'hooks.json');
-    writeJson(file, mergeHooks(readJson(file), hookCommand('codex', root), undefined));
+    writeJson(file, mergeHooks(readJson(file), hookCommand('codex', root), '^Bash$'));
     return {
       file,
       notes: [
-        'Codex hooks may need to be enabled in your Codex config, and some Codex versions do not run hooks on Windows.',
-        'Check https://developers.openai.com/codex/hooks for your version, then restart Codex.',
+        'Open Codex in this project and run /hooks to trust the Litti hook (needed again after upgrading or moving Litti).',
+        'Codex skips untrusted project hooks without a warning. Docs: https://learn.chatgpt.com/docs/hooks',
       ],
     };
   }

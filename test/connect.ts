@@ -63,8 +63,8 @@ try {
     const page = await app.inject({ method: 'GET', url: '/integrations' });
     assert.equal(page.statusCode, 200);
     for (const m of page.body.matchAll(/<script>([\s\S]*?)<\/script>/g)) assert.doesNotThrow(() => new Function(m[1]));
-    const s = (await app.inject({ method: 'GET', url: '/api/integrations', headers: { host: 'litti.test' } })).json();
-    assert.equal(s.redirectUris.jira, 'http://litti.test/connect/jira/callback');
+    const s = (await app.inject({ method: 'GET', url: '/api/integrations', headers: { host: 'localhost:4000' } })).json();
+    assert.equal(s.redirectUris.jira, 'http://localhost:4000/connect/jira/callback');
     assert.equal(s.providers.slack.connected, false);
   });
 
@@ -81,12 +81,12 @@ try {
   });
 
   await step('Connect button redirects to the provider with client id, redirect URL and state', async () => {
-    const r = await app.inject({ method: 'GET', url: '/connect/slack', headers: { host: 'litti.test' } });
+    const r = await app.inject({ method: 'GET', url: '/connect/slack', headers: { host: 'localhost:4000' } });
     assert.equal(r.statusCode, 302);
     const u = new URL(r.headers.location as string);
     assert.equal(u.origin + u.pathname, 'https://slack.com/oauth/v2/authorize');
     assert.equal(u.searchParams.get('client_id'), 'slack-client-1');
-    assert.equal(u.searchParams.get('redirect_uri'), 'http://litti.test/connect/slack/callback');
+    assert.equal(u.searchParams.get('redirect_uri'), 'http://localhost:4000/connect/slack/callback');
     assert.match(u.searchParams.get('scope')!, /chat:write/);
     const j = new URL((await app.inject({ method: 'GET', url: '/connect/jira' })).headers.location as string);
     assert.equal(j.hostname, 'auth.atlassian.com');

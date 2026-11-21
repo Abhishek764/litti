@@ -23,6 +23,10 @@ export function checkProductionConfig(env = process.env): StartupCheck {
 
   // Listening only on this machine (the default) is a personal setup: no key needed, no warning.
   const localOnly = ['127.0.0.1', 'localhost', '::1'].includes(env.HOST || '127.0.0.1');
+  // Team mode posts review links to Slack/Jira/agents: they must never be built from a request's Host header.
+  if (env.LITTI_API_KEY && !env.PUBLIC_URL) {
+    errors.push('PUBLIC_URL is required when LITTI_API_KEY is set (team mode), e.g. PUBLIC_URL=https://litti.yourco.com. Review links are built from it, never from the request\'s Host header.');
+  }
   if (!env.LITTI_API_KEY) {
     if (!localOnly) warnings.push('LITTI_API_KEY is not set — anyone who can reach the server can submit actions.');
   } else if (!env.LITTI_ADMIN_KEY) warnings.push('LITTI_ADMIN_KEY is not set — anyone with LITTI_API_KEY (including agents) can issue review links. Set a separate admin key.');

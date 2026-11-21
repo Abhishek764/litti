@@ -9,7 +9,7 @@ Litti reads settings from environment variables and from `~/.litti/config.env` (
 | `SECRET_KEY` | — **required** | 32+ random characters. Signs tokens, review links and page stamps; encrypts integration tokens |
 | `APPROVAL_SERVER_PORT` | `3847` | Port |
 | `HOST` | `127.0.0.1` | Interface to listen on (`0.0.0.0` in containers) |
-| `PUBLIC_URL` | request host | Base URL in links. Use https in production |
+| `PUBLIC_URL` | `http://127.0.0.1:<port>` | Base URL in links. **Required** when `LITTI_API_KEY` is set. Use https in production. While Litti listens on 127.0.0.1 it only answers requests addressed to `127.0.0.1`, `localhost`, `[::1]` or this host (DNS-rebinding guard) |
 | `LITTI_DB_PATH` | `data/litti.db` | SQLite file |
 | `LOG_LEVEL`, `TRUST_PROXY` | | Logging; trust `X-Forwarded-*` behind a proxy |
 

@@ -40,6 +40,7 @@ Poll `GET /api/actions/:id` until `status` is `approved`, then run exactly that 
 | `GET` | `/` | Review inbox |
 | `GET` | `/approve/:id` | Review page |
 | `POST` | `/api/actions/:id/review-link` | `{reviewer}` → personal signed link (admin) |
+| `POST` | `/api/actions/:id/retry` | Re-run delivery for an approved action whose deploy failed (status `deploy-failed`). Admin key in team mode; open locally. 200 delivered, 502 failed again, 409 nothing to retry |
 | `GET` | `/changes` | Changes view |
 | `GET` | `/integrations` | Integrations page (admins) |
 | `GET` | `/dashboard.html` | Dashboard |

@@ -114,7 +114,11 @@ export interface PendingAction {
   quizAnswer: string;
   status: 'pending' | 'approved' | 'rejected';
   createdAt: string;
+  /** Who created it: the agent hook gate, the agent API, or the Changes page. Older rows: unknown. */
+  source?: ActionSource;
 }
+
+export type ActionSource = 'gate' | 'api' | 'changes';
 
 /** Something that happened to an action after its card was posted. */
 export interface ActionEvent {

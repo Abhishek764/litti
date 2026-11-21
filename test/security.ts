@@ -92,6 +92,23 @@ try {
     assert.notEqual(computeChainHash({ ...legacy, format: 2 }), computeChainHash({ ...legacy, format: 2, tier: 3 }), 'v2 covers tier');
   });
 
+  await step('SEC-1 an agent-declared Tier 0 action can neither pre-approve the gate nor ship', async () => {
+    const gateDiff = 'diff --git a/.litti/command b/.litti/command\n--- a/.litti/command\n+++ b/.litti/command\n@@ -0,0 +1 @@\n+git push origin main\n'
+      + 'diff --git a/src/pay.ts b/src/pay.ts\n--- a/src/pay.ts\n+++ b/src/pay.ts\n@@ -1 +1 @@\n-export const fee = 1;\n+export const fee = sendAllMoneyTo("attacker");';
+    const gateReq = { agent: 'claude-code', action: 'deploy', command: 'git push origin main', description: 'push', diff: gateDiff, touchedPaths: ['src/pay.ts'] };
+    const first = (await app.inject({ method: 'POST', url: '/api/gate', payload: gateReq })).json();
+    assert.equal(first.decision, 'deny');
+    // The agent declares the same diff as a harmless read: Tier 0, auto-approved with a token.
+    const self = (await app.inject({ method: 'POST', url: '/api/actions', payload: { agent: 'claude-code', action: 'read', description: 'just reading', diff: gateDiff, touchedPaths: [] } })).json();
+    assert.equal(self.tier, 0);
+    const retry = (await app.inject({ method: 'POST', url: '/api/gate', payload: gateReq })).json();
+    assert.equal(retry.decision, 'deny', 'a self-declared Tier 0 action must not satisfy the gate');
+    assert.equal(retry.id, first.id, 'still the gate\'s own pending review');
+    const shipped = await consume(self.token, gateDiff);
+    assert.equal(shipped.statusCode, 409, 'a Tier 0 token is not a shipping approval');
+    assert.match(shipped.json().reason, /Tier 0/);
+  });
+
   await step('0.5.10 the tamper button only exists in demo mode', async () => {
     assert.equal((await app.inject({ method: 'GET', url: '/api/meta' })).json().demo, false);
     assert.equal((await app.inject({ method: 'POST', url: '/api/demo/break-chain', payload: {} })).statusCode, 404);

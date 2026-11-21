@@ -4,7 +4,7 @@ import fastifyStatic from '@fastify/static';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { createHash, timingSafeEqual } from 'node:crypto';
-import type { ActionCard, ActionEvent, ApprovalSubmission, ApprovalToken, Notifier, PendingAction, QuizResult, Tier } from '../types.js';
+import type { ActionCard, ActionSource, ActionEvent, ApprovalSubmission, ApprovalToken, Notifier, PendingAction, QuizResult, Tier } from '../types.js';
 import { buildActionCard } from '../agents/builder.js';
 import { gatekeep } from '../agents/gatekeeper.js';
 import { checkAnswer, chooseChallenge } from '../agents/challenges.js';
@@ -71,7 +71,7 @@ function takeTierBump(): number {
 }
 
 /** Tier-and-quiz an action, apply any pending rubber-stamp bump, persist it, announce it. */
-export function registerPending(card: ActionCard, baseUrl: string): { id: string; url: string; tier: Tier } {
+export function registerPending(card: ActionCard, baseUrl: string, source: ActionSource = 'api'): { id: string; url: string; tier: Tier } {
   const { assessment } = gatekeep(card);
   const bump = assessment.tier === 0 ? 0 : takeTierBump();
   const tier = Math.min(assessment.tier + bump, 3) as Tier;
@@ -93,6 +93,7 @@ export function registerPending(card: ActionCard, baseUrl: string): { id: string
     quizAnswer: challenge.answer,
     status: 'pending',
     createdAt: new Date().toISOString(),
+    source,
   });
   const url = `${baseUrl}/approve/${card.id}`;
   if (tier > 0) {
@@ -109,6 +110,8 @@ function checkShippable(token: ApprovalToken, diff: string): { valid: boolean; r
   if (typeof token !== 'object' || token === null) return { valid: false, reason: 'Malformed token.' };
   const p = getPending(String(token.actionId));
   if (!p || p.status !== 'approved') return { valid: false, reason: 'Action is not approved.' };
+  // Tier 0 is decided from what the requester declared; it is logged, never a shipping approval.
+  if (p.tier === 0 || p.requiredApprovers === 0) return { valid: false, reason: 'Tier 0 actions are logged, not approved by a human: they cannot ship.' };
   if (token.diffHash !== p.actionCard.diffHash) return { valid: false, reason: 'Token is for a different change.' };
   if (isShipped(String(token.tokenId))) return { valid: false, reason: 'Token already used to ship.' };
   try { return validateToken(token, diff, p.requiredApprovers); }
@@ -178,7 +181,7 @@ export function buildServer(opts: { logger?: boolean } = {}): FastifyInstance {
       return typeof v === 'string' && v.trim() ? v.trim().slice(0, 64) : null;
     },
     baseUrlFor,
-    registerPending,
+    registerPending: (card, baseUrl) => registerPending(card, baseUrl, 'changes'),
   });
 
   // Integrations page + Connect buttons (Slack, Discord, Jira).
@@ -355,7 +358,7 @@ export function buildServer(opts: { logger?: boolean } = {}): FastifyInstance {
       `Status: litti status ${p.id}`,
     ].join('\n');
 
-    const prev = latestByDiffHash(card.diffHash);
+    const prev = latestByDiffHash(card.diffHash, 'gate');
     if (prev?.status === 'pending') {
       return { ok: true, decision: 'deny', id: prev.id, tier: prev.tier, approvalUrl: `${base}/approve/${prev.id}`,
         message: denyMsg({ id: prev.id, tier: prev.tier, requiredApprovers: prev.requiredApprovers, approvals: prev.currentApprovals.length }, `${base}/approve/${prev.id}`, false) };
@@ -367,7 +370,7 @@ export function buildServer(opts: { logger?: boolean } = {}): FastifyInstance {
       return { ok: true, decision: 'allow', id: prev.id, tier: prev.tier, message: `✅ Litti: approved by ${who}. Running once.` };
     }
 
-    const { id, url, tier } = registerPending(card, base);
+    const { id, url, tier } = registerPending(card, base, 'gate');
     if (tier === 0) {
       const token = createToken(card.id, card.diffHash, []);
       setApprovalToken(id, token);

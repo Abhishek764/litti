@@ -13,6 +13,7 @@
     "demo/sample-diffs",
     "README.md",
     "LICENSE",
+    "CHANGELOG.md",
     ".env.example"
   ],
   "scripts": {
@@ -39,6 +40,7 @@
     "typescript": "^5.6.3"
   },
   "license": "MIT",
+  "author": "Abhishek764 (https://github.com/Abhishek764)",
   "repository": {
     "type": "git",
     "url": "https://github.com/Abhishek764/litti.git"
@@ -49,6 +51,10 @@
   },
   "engines": {
     "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   },
   "keywords": [
     "ai-agents",

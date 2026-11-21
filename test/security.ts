@@ -109,6 +109,40 @@ try {
     assert.match(shipped.json().reason, /Tier 0/);
   });
 
+  await step('SEC-10 failed deploy: deploy-failed receipt, not shippable, gate stays shut; retry re-runs it', async () => {
+    const { allReceipts } = await import('../src/chain/db.js');
+    const diff = 'diff --git a/.litti/command b/.litti/command\n--- a/.litti/command\n+++ b/.litti/command\n@@ -0,0 +1 @@\n+npm publish\n'
+      + 'diff --git a/src/pay.ts b/src/pay.ts\n--- a/src/pay.ts\n+++ b/src/pay.ts\n@@ -1 +1 @@\n-export const v = 1;\n+export const v = 2;';
+    const req = { agent: 'claude-code', action: 'deploy', command: 'npm publish', description: 'publish', diff, touchedPaths: ['src/pay.ts'] };
+    const gateCall = () => app.inject({ method: 'POST', url: '/api/gate', payload: req }).then(r => r.json());
+    const retry = (headers: Record<string, string> = {}) => app.inject({ method: 'POST', url: `/api/actions/${first.id}/retry`, headers });
+    const first = await gateCall();
+    process.env.LITTI_DEPLOY_WEBHOOK = 'http://127.0.0.1:9/deploy';
+    try {
+      const p = getPending(first.id)!;
+      let last: any;
+      for (const who of ['ana', 'ben', 'cy'].slice(0, p.requiredApprovers)) {
+        last = (await app.inject({ method: 'POST', url: `/approve/${first.id}/submit`, payload: { approver: who, quizAnswer: sampleAnswer(getPending(first.id)!), scrolledToBottom: true, viewStamp: issueViewStamp(first.id, Date.now() - 45000) } })).json();
+      }
+      assert.equal(last.ok, false, 'the reviewer sees the failure');
+      assert.equal(getPending(first.id)!.status, 'deploy-failed');
+      assert.equal(allReceipts().at(-1)!.outcome, 'deploy-failed', 'the chain does not claim a deploy that never happened');
+      assert.equal((await gateCall()).decision, 'deny', 'the gate does not allow a failed deploy');
+      assert.equal((await consume(getApprovalToken(first.id), diff)).statusCode, 409, 'not shippable');
+      assert.equal((await retry()).statusCode, 502, 'retry while the pipeline is still down fails again');
+      assert.equal(getPending(first.id)!.status, 'deploy-failed');
+    } finally { delete process.env.LITTI_DEPLOY_WEBHOOK; }
+    process.env.LITTI_API_KEY = 'agent-key';
+    try { assert.equal((await retry({ 'x-litti-key': 'agent-key' })).statusCode, 401, 'team mode: the agent key cannot retry, only the admin key'); }
+    finally { delete process.env.LITTI_API_KEY; }
+    const ok = await retry();
+    assert.equal(ok.statusCode, 200, ok.body);
+    assert.equal(getPending(first.id)!.status, 'approved');
+    assert.equal(allReceipts().at(-1)!.outcome, 'approved');
+    assert.equal((await gateCall()).decision, 'allow', 'after a successful retry the command runs once');
+    assert.equal((await retry()).statusCode, 409, 'nothing left to retry');
+  });
+
   await step('0.5.10 the tamper button only exists in demo mode', async () => {
     assert.equal((await app.inject({ method: 'GET', url: '/api/meta' })).json().demo, false);
     assert.equal((await app.inject({ method: 'POST', url: '/api/demo/break-chain', payload: {} })).statusCode, 404);

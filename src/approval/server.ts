@@ -118,6 +118,29 @@ function checkShippable(token: ApprovalToken, diff: string): { valid: boolean; r
   catch { return { valid: false, reason: 'Malformed token.' }; }
 }
 
+/**
+ * Deliver an approved action. Success → status approved + 'approved' receipt. Failure → status
+ * deploy-failed + 'deploy-failed' receipt: not shippable, the gate stays shut, an admin can retry.
+ */
+async function deliverApproved(p: PendingAction, approvals: ApprovalSubmission[], token: ApprovalToken): Promise<{ ok: boolean; message: string; attention: number }> {
+  const card = p.actionCard;
+  const result = await execute(card, token, p.requiredApprovers);
+  const attention = Math.round(approvals.reduce((s, a) => s + attentionScore(card, true, a.scrolledToBottom, a.timeSpentMs), 0) / Math.max(approvals.length, 1));
+  updatePending(p.id, approvals, result.ok ? 'approved' : 'deploy-failed');
+  appendReceipt({ actionCard: card, tier: p.tier, approvals, outcome: result.ok ? 'approved' : 'deploy-failed', attentionScore: attention });
+  const message = result.ok ? result.message
+    : `${result.message}. Nothing ran. Fix the pipeline, then retry: POST /api/actions/${p.id}/retry (admin key).`;
+  return { ok: result.ok, message, attention };
+}
+
+/** Retry is an admin power: the admin key in team mode, open only in local mode (no keys at all). */
+function retryAllowed(headers: Record<string, unknown>): boolean {
+  const admin = process.env.LITTI_ADMIN_KEY;
+  if (admin) return keyMatches(headers['x-litti-admin-key'], admin);
+  return !process.env.LITTI_API_KEY;
+}
+const retrying = new Set<string>();
+
 /** Minimum review time for a tier. */
 export function minTimeMs(tier: Tier): number { return tier >= 2 ? 30000 : 10000; }
 
@@ -313,10 +336,8 @@ export function buildServer(opts: { logger?: boolean } = {}): FastifyInstance {
     const diffHash = createHash('sha256').update(card.diff).digest('hex');
     const token = createToken(card.id, diffHash, quizResults);
     setApprovalToken(pending.id, token);
-    const result = await execute(card, token, pending.requiredApprovers);
-
-    const avgAttention = Math.round(approvals.reduce((s, a) => s + attentionScore(card, true, a.scrolledToBottom, a.timeSpentMs), 0) / approvals.length);
-    appendReceipt({ actionCard: card, tier: pending.tier, approvals, outcome: 'approved', attentionScore: avgAttention });
+    const result = await deliverApproved(pending, approvals, token);
+    const avgAttention = result.attention;
     announce(`${result.message} — "${card.description}"\nReviewed by ${approvals.map(a => a.approver).join(', ')} · attention ${avgAttention}/100 · diff ${diffHash.slice(0, 12)}… · receipt chained.`,
       { kind: result.ok ? 'approved' : 'execution-failed', card, approvers: approvals.map(a => a.approver), requiredApprovers: pending.requiredApprovers, attentionScore: avgAttention });
     return { ok: result.ok, message: result.message };
@@ -387,6 +408,10 @@ export function buildServer(opts: { logger?: boolean } = {}): FastifyInstance {
       return { ok: true, decision: 'deny', id: prev.id, tier: prev.tier, approvalUrl: `${base}/approve/${prev.id}`,
         message: denyMsg({ id: prev.id, tier: prev.tier, requiredApprovers: prev.requiredApprovers, approvals: prev.currentApprovals.length }, `${base}/approve/${prev.id}`, false) };
     }
+    if (prev?.status === 'deploy-failed') {
+      return { ok: true, decision: 'deny', id: prev.id, tier: prev.tier,
+        message: `🔒 Litti: this change was approved, but delivering it failed, so it may not run yet. Ask the user to fix the pipeline and retry it (POST /api/actions/${prev.id}/retry), then run exactly the same command again. Status: litti status ${prev.id}` };
+    }
     if (prev?.status === 'approved' && !getSetting(`gate_used:${prev.id}`)) {
       setSetting(`gate_used:${prev.id}`, new Date().toISOString());
       const who = prev.currentApprovals.map(a => a.approver).join(', ') || 'policy (Tier 0)';
@@ -414,6 +439,22 @@ export function buildServer(opts: { logger?: boolean } = {}): FastifyInstance {
     if (!p) return reply.code(404).send({ ok: false, message: 'Unknown action.' });
     const token = p.status === 'approved' ? getApprovalToken(p.id) : null;
     return { ok: true, id: p.id, tier: p.tier, status: p.status, approvals: p.currentApprovals.length, requiredApprovers: p.requiredApprovers, ...(token ? { token } : {}) };
+  });
+
+  // Admin API: re-run the executor for an approved action whose delivery failed.
+  app.post<{ Params: { id: string } }>('/api/actions/:id/retry', async (req, reply) => {
+    if (!retryAllowed(req.headers)) return reply.code(401).send({ ok: false, message: 'Retry needs the x-litti-admin-key header.' });
+    const p = getPending(req.params.id);
+    if (!p) return reply.code(404).send({ ok: false, message: 'Unknown action.' });
+    if (p.status !== 'deploy-failed' || retrying.has(p.id)) return reply.code(409).send({ ok: false, message: `Nothing to retry: the action is ${retrying.has(p.id) ? 'being retried' : p.status}.` });
+    const token = getApprovalToken(p.id) as ApprovalToken | null;
+    if (!token) return reply.code(409).send({ ok: false, message: 'No approval token stored for this action.' });
+    retrying.add(p.id);
+    try {
+      const r = await deliverApproved(p, p.currentApprovals, token);
+      announce(`${r.ok ? '🔁 Retried' : '⚠️ Retry failed'}: ${r.message} — "${p.actionCard.description}"`);
+      return reply.code(r.ok ? 200 : 502).send({ ok: r.ok, message: r.message });
+    } finally { retrying.delete(p.id); }
   });
 
   // Agent/CLI API: actions waiting for reviewers.

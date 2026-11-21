@@ -44,7 +44,7 @@ a{color:var(--blue)}
 <header><a href="/"><img src="/brand/litti-logo.svg" alt="Litti"></a><nav><a href="/">Inbox</a><a href="/changes">Changes</a><a href="/integrations" style="color:var(--text)">Integrations</a><a href="/dashboard.html">Dashboard</a><a href="/docs">Docs</a></nav></header>
 <div class="wrap">
 <h1>Integrations</h1>
-<p class="sub">Connect where your team hears about approvals. Reviewers still approve on the Litti review page, never in chat. Only metadata is sent; your code never leaves this server.</p>
+<p class="sub">Connect where your team hears about approvals. Reviewers still approve on the Litti review page, never in chat. They receive the description, command, file names and risk reasons; diffs stay on this server.</p>
 <div class="banner" id="banner"></div>
 <div id="cards">Loading…</div>
 </div>
@@ -89,7 +89,7 @@ function slackGuide(s,info){
     li(['On the app’s Basic Information page, copy Client ID and Client Secret here:']),
   );
   st.append(ol,appForm('slack',s));
-  if(!info.https)st.append(el('div','warn','Slack only sends people back to https addresses. Run Litti behind https (set PUBLIC_URL), or use the quick option below for now.'));
+  if(!info.https)st.append(el('div','warn','Slack only sends people back to https addresses. Run Litti behind https (set PUBLIC_URL), or use “Paste a Slack webhook link” instead.'));
   const r=el('div','row');r.append(connectBtn('slack',s),el('span','facts','You’ll pick the channel on Slack’s page.'));st.append(r);d.append(st);return d;
 }
 function discordGuide(s,info){

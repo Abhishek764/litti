@@ -45,7 +45,9 @@ try {
     const ok = checkProductionConfig({ SECRET_KEY: 'x'.repeat(40) });
     assert.equal(ok.errors.length, 0);
     assert.ok(!ok.warnings.some(w => w.includes('LITTI_API_KEY')), 'no key warning when only listening locally');
-    assert.ok(checkProductionConfig({ SECRET_KEY: 'x'.repeat(40), HOST: '0.0.0.0' }).warnings.some(w => w.includes('LITTI_API_KEY')), 'warns when reachable from the network');
+    const open = checkProductionConfig({ SECRET_KEY: 'x'.repeat(40), HOST: '0.0.0.0' });
+    assert.ok(open.errors.some(e => e.includes('LITTI_API_KEY') && e.includes('HOST=0.0.0.0')), 'SEC-15: refuses to listen on the network without an agent key');
+    assert.equal(checkProductionConfig({ SECRET_KEY: 'x'.repeat(40), HOST: '0.0.0.0', LITTI_API_KEYS: 'ci:k', PUBLIC_URL: 'https://litti.example.test' }).errors.length, 0, 'labelled keys count as team mode');
     assert.ok(checkProductionConfig({ SECRET_KEY: 'x'.repeat(40), PUBLIC_URL: 'ftp://x' }).errors.length > 0);
     const team = checkProductionConfig({ SECRET_KEY: 'x'.repeat(40), LITTI_API_KEY: 'k', LITTI_ADMIN_KEY: 'a' });
     assert.ok(team.errors.some(e => e.includes('PUBLIC_URL')), 'team mode needs PUBLIC_URL: links must never come from the Host header');
@@ -74,7 +76,7 @@ try {
     assert.equal(r.headers['referrer-policy'], 'no-referrer');
     assert.match(String(r.headers['content-security-policy']), /frame-ancestors 'none'/);
     assert.equal(r.headers['cache-control'], 'no-store');
-    assert.equal((await app.inject({ url: '/healthz' })).json().ok, true);
+    assert.deepEqual((await app.inject({ url: '/healthz' })).json(), { ok: true }, 'healthz says nothing else');
   });
 
   await step('D2 local mode: the OS user is signed in automatically; typed names ignored; agent named like the user refused', async () => {

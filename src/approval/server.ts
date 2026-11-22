@@ -280,7 +280,8 @@ export function buildServer(opts: { logger?: boolean } = {}): FastifyInstance {
   // Documentation site (docs/guide/*.md).
   registerDocsRoutes(app);
 
-  app.get('/healthz', () => ({ ok: true, receipts: allReceipts().length }));
+  // Liveness only: no counts or versions for anonymous callers.
+  app.get('/healthz', () => ({ ok: true }));
 
   // Review inbox: what's waiting for reviewers.
   app.get('/', (req, reply) => {

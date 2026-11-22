@@ -57,9 +57,27 @@ export function loadPage(slug: string, dir = GUIDE_DIR): Page | null {
 }
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-const url = (slug: string) => (slug === 'index' ? '/docs' : `/docs/${slug}`);
+/**
+ * Where links point. In the app (default) docs live at /docs/<slug>. For the static site
+ * (scripts/build-site.ts) pass `base`, e.g. '/litti/': pages become <base>docs/<slug>/ and
+ * every root-relative link (logo, favicon, markdown links) is prefixed with the base.
+ */
+export interface RenderOptions { base?: string }
+const normBase = (b?: string) => (b ? (b.endsWith('/') ? b : b + '/') : '');
+function linker(opts: RenderOptions = {}) {
+  const base = normBase(opts.base);
+  const url = (slug: string) => (!base ? (slug === 'index' ? '/docs' : `/docs/${slug}`) : (slug === 'index' ? `${base}docs/` : `${base}docs/${slug}/`));
+  const abs = (path: string) => (base ? base + path.replace(/^\//, '') : path);
+  /** Rewrites root-relative hrefs/srcs inside rendered markdown for the static site. */
+  const rewrite = (html: string) => !base ? html : html.replace(/(href|src)="\/(?!\/)([^"]*)"/g, (_m, attr: string, rest: string) => {
+    const d = /^docs(?:\/([a-z0-9-]+))?(#[^"]*)?$/.exec(rest);
+    if (d) return `${attr}="${url(d[1] ?? 'index')}${d[2] ?? ''}"`;
+    return `${attr}="${base}${rest}"`;
+  });
+  return { url, abs, rewrite };
+}
 
-function searchIndex(): string {
+function searchIndex(url: (slug: string) => string): string {
   const idx = ORDER.map(p => {
     const page = loadPage(p.slug);
     return { u: url(p.slug), t: p.title, h: page?.headings.filter(h => h.level <= 3).map(h => [h.text.replace(/[`*]/g, ''), h.id]) ?? [], x: (page?.text ?? '').slice(0, 4000).toLowerCase() };
@@ -68,7 +86,8 @@ function searchIndex(): string {
   return JSON.stringify(idx).replace(/</g, '\\u003c');
 }
 
-export function renderDocsPage(page: Page): string {
+export function renderDocsPage(page: Page, opts: RenderOptions = {}): string {
+  const { url, abs, rewrite } = linker(opts);
   const at = ORDER.findIndex(p => p.slug === page.slug);
   const prev = ORDER[at - 1];
   const next = ORDER[at + 1];
@@ -80,7 +99,7 @@ export function renderDocsPage(page: Page): string {
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(page.title)} · Litti docs</title>
 <meta name="description" content="Litti documentation: ${esc(page.title)}">
-<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="${abs('/favicon.svg')}" type="image/svg+xml">
 <style>
 :root{--bg:#f7f5f0;--surface:#fff;--border:#e4e0d6;--text:#1a1d23;--muted:#5f6670;--accent:#a8700a;--brass:#F5B942;--code:#f1eee6;--link:#8a5a00;
 --mono:'SF Mono','Cascadia Code',Consolas,monospace;--sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,sans-serif}
@@ -130,15 +149,15 @@ footer{border-top:1px solid var(--border);padding:24px 20px;color:var(--muted);f
 </style></head><body>
 <header>
   <button class="menu" id="menu" aria-label="Menu">☰</button>
-  <a class="brand" href="/docs"><img src="/brand/litti-logo.svg" alt="Litti"><span>Docs</span></a>
+  <a class="brand" href="${url('index')}"><img src="${abs('/brand/litti-logo.svg')}" alt="Litti"><span>Docs</span></a>
   <div class="search"><input id="q" type="search" placeholder="Search docs…  ( / )" autocomplete="off" aria-label="Search docs"><div class="results" id="res"></div></div>
-  <nav><a class="hide" href="/">Open Litti</a><a class="hide" href="${REPO}" target="_blank" rel="noopener">GitHub</a><button id="theme" type="button" title="Toggle theme">◐</button></nav>
+  <nav><a class="hide" href="${abs('/')}">${opts.base ? 'Home' : 'Open Litti'}</a><a class="hide" href="${REPO}" target="_blank" rel="noopener">GitHub</a><button id="theme" type="button" title="Toggle theme">◐</button></nav>
 </header>
 <div class="layout">
   <aside class="side" id="side">${side}</aside>
   <main>
     <h1>${esc(page.title)}</h1>
-    ${page.html}
+    ${rewrite(page.html)}
     <div class="pn">${prev ? `<a class="prev" href="${url(prev.slug)}"><small>← Previous</small>${esc(prev.title)}</a>` : '<span style="flex:1"></span>'}${next ? `<a class="next" href="${url(next.slug)}"><small>Next →</small>${esc(next.title)}</a>` : '<span style="flex:1"></span>'}</div>
     <div class="edit"><a href="${REPO}/blob/main/docs/guide/${page.slug}.md" target="_blank" rel="noopener">Edit this page on GitHub</a></div>
   </main>
@@ -146,7 +165,7 @@ footer{border-top:1px solid var(--border);padding:24px 20px;color:var(--muted);f
 </div>
 <footer>Litti · proof that a human read what they approved · <a href="${REPO}" style="color:inherit">MIT licensed</a></footer>
 <script>
-const IDX=${searchIndex()};
+const IDX=${searchIndex(url)};
 document.querySelectorAll('.code .copy').forEach(b=>b.addEventListener('click',()=>{const t=b.parentElement.querySelector('code').textContent;navigator.clipboard.writeText(t).then(()=>{b.textContent='Copied';setTimeout(()=>b.textContent='Copy',1400);}).catch(()=>{b.textContent='Select to copy';});}));
 document.getElementById('menu').onclick=()=>document.getElementById('side').classList.toggle('open');
 const root=document.documentElement;try{const t=localStorage.getItem('litti-docs-theme');if(t)root.dataset.theme=t;}catch(e){}

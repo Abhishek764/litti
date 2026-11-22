@@ -13,6 +13,7 @@
     "demo/sample-diffs",
     "README.md",
     "LICENSE",
+    "CHANGELOG.md",
     ".env.example"
   ],
   "scripts": {
@@ -20,8 +21,9 @@
     "demo": "tsx src/demo.ts",
     "litti": "tsx src/cli.ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsc --noEmit && tsx test/smoke.ts && tsx test/production.ts && tsx test/cli.ts && tsx test/notify.ts && tsx test/challenges.ts && tsx test/changes.ts && tsx test/hooks.ts && tsx test/connect.ts && tsx test/docs.ts && tsx test/broker.ts && tsx test/security.ts",
+    "test": "tsc --noEmit && tsx test/smoke.ts && tsx test/production.ts && tsx test/cli.ts && tsx test/notify.ts && tsx test/challenges.ts && tsx test/changes.ts && tsx test/hooks.ts && tsx test/connect.ts && tsx test/docs.ts && tsx test/broker.ts && tsx test/security.ts && tsx test/site.ts",
     "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json",
+    "site": "tsx scripts/build-site.ts",
     "prepack": "npm run build"
   },
   "dependencies": {
@@ -38,6 +40,7 @@
     "typescript": "^5.6.3"
   },
   "license": "MIT",
+  "author": "Abhishek764 (https://github.com/Abhishek764)",
   "repository": {
     "type": "git",
     "url": "https://github.com/Abhishek764/litti.git"
@@ -48,6 +51,10 @@
   },
   "engines": {
     "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   },
   "keywords": [
     "ai-agents",

@@ -1,9 +1,11 @@
-node_modules
-data
-deployments
-*.db
-*.db-*
-.env
-.git
-.github
-test
+# Allowlist: the build context holds only what the Dockerfile copies.
+# Nothing else (.env, databases, .git, node_modules, tarballs, notes) is sent to the builder.
+*
+!package.json
+!package-lock.json
+!tsconfig.json
+!tsconfig.build.json
+!src/
+!public/
+!demo/sample-diffs/
+!docs/guide/

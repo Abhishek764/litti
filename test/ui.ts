@@ -1,6 +1,8 @@
 /** UI tests: dashboard receipts + retry, inbox, review page accessibility. Pages run against a tiny fake DOM. */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { renderInbox, age } from '../src/approval/inbox.js';
+import type { PendingAction } from '../src/types.js';
 
 let passed = 0;
 async function step(name: string, fn: () => Promise<void> | void) { await fn(); passed++; console.log(`  ✓ ${name}`); }
@@ -78,6 +80,44 @@ await step('dashboard: Retry posts with x-litti-ui and shows the server message 
     assert.equal(msg.style.color, ok ? 'var(--green)' : 'var(--red)');
     assert.equal(btn.disabled, ok, 'the button comes back after a failure');
   }
+});
+
+const pendingAction = (id: string, status: string, tier: 0 | 1 | 2 | 3, createdAt: string, agent = 'claude-code') => ({
+  id, tier, status, createdAt, requiredApprovers: 2, currentApprovals: [{ approver: 'ana' }], quiz: { question: '', options: [], correctIndex: 0 }, quizAnswer: '',
+  actionCard: { id, agent, action: 'commit', description: `desc ${id}`, diff: '', diffHash: '', touchedPaths: ['src/a.ts'], reversible: true, rollbackPlan: '', timestamp: createdAt },
+}) as unknown as PendingAction;
+
+await step('inbox: only pending actions, each with requester, tier and age', () => {
+  const now = Date.parse('2026-11-21T12:00:00.000Z');
+  const html = renderInbox([
+    pendingAction('p1', 'pending', 3, '2026-11-21T11:55:00.000Z', '<agent>'),
+    pendingAction('p2', 'approved', 1, '2026-11-21T11:00:00.000Z'),
+    pendingAction('p3', 'superseded', 1, '2026-11-21T11:00:00.000Z'),
+    pendingAction('p4', 'deploy-failed', 2, '2026-11-21T11:00:00.000Z'),
+    pendingAction('p5', 'rejected', 2, '2026-11-21T11:00:00.000Z'),
+    pendingAction('p6', 'pending', 1, '2026-11-19T11:00:00.000Z'),
+  ], 'http://127.0.0.1:3882', now);
+  assert.match(html, /approve\/p1/);
+  assert.match(html, /approve\/p6/);
+  for (const id of ['p2', 'p3', 'p4', 'p5']) assert.doesNotMatch(html, new RegExp(`approve/${id}`), `${id} is not pending`);
+  assert.match(html, /Requested by <b class="who">&lt;agent&gt;<\/b>/, 'requester shown and escaped');
+  assert.match(html, /Tier 3 · critical/);
+  assert.match(html, /5 min ago/);
+  assert.match(html, /2 days ago/);
+  assert.match(html, /aria-label="1 of 2 approvals"/);
+  assert.match(html, /href="\/changes"/);
+  assert.match(html, /href="\/integrations"/);
+  assert.doesNotMatch(html, /Get started/);
+  assert.equal(age('2026-11-21T11:59:30.000Z', now), 'just now');
+  assert.equal(age('2026-11-21T09:00:00.000Z', now), '3 h ago');
+  assert.equal(age('garbage', now), 'unknown age');
+});
+
+await step('inbox: nothing pending (even with old non-pending rows) shows the Get started guide', () => {
+  const html = renderInbox([pendingAction('p2', 'approved', 1, '2026-11-21T11:00:00.000Z')], 'http://127.0.0.1:3882');
+  assert.match(html, /Nothing waiting for review/);
+  assert.match(html, /Get started/);
+  assert.match(html, /litti install claude/);
 });
 
 console.log(`\nui: ${passed} passed`);

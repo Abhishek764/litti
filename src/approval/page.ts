@@ -1,5 +1,6 @@
 /** Generates the self-contained approval HTML page. Dark theme, no frameworks. */
 import type { ActionCard, Quiz, Tier } from '../types.js';
+import { diffLineKinds } from '../agents/challenges.js';
 
 const TIER_META: Record<Tier, { label: string; color: string }> = {
   0: { label: 'AUTO', color: 'var(--green)' },
@@ -13,13 +14,12 @@ function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-/** Render a diff as color-coded, line-numbered HTML. */
+/** Render a diff as color-coded, line-numbered HTML. Colours come from the classifier the challenges use. */
 function renderDiff(diff: string, pickable = false): string {
+  const kinds = diffLineKinds(diff);
   return diff.split('\n').map((line, i) => {
-    let cls = 'ln';
-    if (line.startsWith('+') && !line.startsWith('+++')) cls = 'ln add';
-    else if (line.startsWith('-') && !line.startsWith('---')) cls = 'ln del';
-    else if (line.startsWith('@@')) cls = 'ln hunk';
+    const k = kinds[i];
+    const cls = k === 'add' || k === 'del' || k === 'hunk' ? `ln ${k}` : 'ln';
     if (pickable) return `<div class="${cls} pick" data-n="${i + 1}" role="button" tabindex="0"><span class="num">${i + 1}</span><span class="code">${esc(line) || ' '}</span></div>`;
     return `<div class="${cls}"><span class="num">${i + 1}</span><span class="code">${esc(line) || ' '}</span></div>`;
   }).join('');

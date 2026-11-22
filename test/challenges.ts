@@ -7,7 +7,7 @@ process.env.LITTI_ALLOW_SELF_ASSERTED = 'true';
 process.env.LITTI_DEPLOY_DIR = join(process.env.TEMP || '/tmp', `litti-ch-${process.pid}`);
 import { initDb, getPending } from '../src/chain/db.js';
 import { buildActionCard } from '../src/agents/builder.js';
-import { buildChallenge, chooseChallenge, checkAnswer, allowedKinds, sampleAnswer, CHALLENGE_KINDS } from '../src/agents/challenges.js';
+import { buildChallenge, chooseChallenge, checkAnswer, allowedKinds, sampleAnswer, diffLineKinds, CHALLENGE_KINDS } from '../src/agents/challenges.js';
 import { buildServer, registerPending, setNotifier } from '../src/approval/server.js';
 import { renderApprovalPage } from '../src/approval/page.js';
 import { issueViewStamp } from '../src/approval/identity.js';
@@ -166,6 +166,63 @@ await step('inline page scripts keep their backslashes (no lone `\\x` inside a T
       for (const run of m[1].matchAll(/\\+/g)) assert.equal(run[0].length % 2, 0, `${f}: lone backslash near "${m[1].slice(Math.max(0, run.index! - 30), run.index! + 10)}"`);
     }
   }
+});
+
+await step('type-in accepts quoted, schema-qualified, hyphenated and unicode table names (QA-7)', () => {
+  const cases: Array<[string, string[], string[]]> = [
+    ['DROP TABLE "user-data";', ['user-data', '"user-data"'], ['user']],
+    ['DROP TABLE public.users;', ['public.users', 'users', 'PUBLIC.USERS'], ['public']],
+    ['DROP TABLE IF EXISTS "public"."users";', ['public.users', 'users', '"public"."users"'], ['public']],
+    ['DROP TABLE `café_orders`;', ['café_orders', 'café_orders'.normalize('NFC')], ['caf']],
+    ['ALTER TABLE [dbo].[Orders] ADD x int;', ['dbo.orders', 'Orders'], ['dbo']],
+  ];
+  for (const [sql, good, bad] of cases) {
+    const c = card(`@@ -1 +1 @@\n+${sql}`, 'Schema change', ['db/m.sql']);
+    const ch = buildChallenge('type-in', c)!;
+    for (const g of good) assert.ok(checkAnswer('type-in', ch.answer, g, c), `${sql}: "${g}" should pass (expected ${ch.answer})`);
+    for (const b of bad) assert.equal(checkAnswer('type-in', ch.answer, b, c), false, `${sql}: "${b}" should fail`);
+  }
+});
+
+await step('type-in property values compare whitespace-normalised (QA-7)', () => {
+  const c = card('@@ -1,3 +1,3 @@\n .btn {\n-  margin: 0 auto;\n+  margin:\t0  8px\tauto;\n }', 'Spacing', ['a.css']);
+  const ch = buildChallenge('type-in', c)!;
+  assert.equal(ch.answer, '0 8px auto');
+  assert.ok(checkAnswer('type-in', ch.answer, '0 8px auto', c));
+  assert.ok(checkAnswer('type-in', ch.answer, '0   8px  auto', c));
+  // Only whitespace changed: no property fact (and so no challenge on it).
+  const same = card('@@ -1,3 +1,3 @@\n .btn {\n-  margin: 0 auto;\n+  margin: 0  auto;\n }', 'Spacing', ['a.css']);
+  assert.equal(buildChallenge('type-in', same), null);
+});
+
+await step('count matches the lines the page colours, including ++/-- content (QA-8)', () => {
+  const diff = '--- a/x.c\n+++ b/x.c\n@@ -1,3 +1,3 @@\n+++counter;\n+int x = 1;\n--- old sql comment\n ctx';
+  assert.deepEqual(diffLineKinds(diff), ['meta', 'meta', 'hunk', 'add', 'add', 'del', 'ctx']);
+  const c = card(diff, 'Counter', ['x.c']);
+  const html = renderApprovalPage({ card: c, tier: 1, reasons: [], requiredApprovers: 1, approvalsSoFar: 0, quiz: { kind: 'count', question: 'q', options: [], correctIndex: -1 }, approver: '', identityLocked: false, allowTyped: true, viewStamp: '', ticket: '' });
+  const green = (html.match(/class="ln add"/g) ?? []).length;
+  const red = (html.match(/class="ln del"/g) ?? []).length;
+  assert.deepEqual([green, red], [2, 1]);
+  for (let i = 0; i < 30; i++) {
+    const ch = buildChallenge('count', c)!;
+    assert.equal(ch.answer, ch.quiz.question.includes('add') ? String(green) : String(red));
+  }
+  // Second file in a plain unified diff: its headers are not changes.
+  const two = '--- a/x\n+++ b/x\n@@ -1 +1 @@\n-a\n+b\n--- a/y\n+++ b/y\n@@ -1 +1 @@\n-c\n+d';
+  assert.deepEqual(diffLineKinds(two).filter(k => k === 'add' || k === 'del').length, 4);
+  // No hunks at all (agent-written): plain prefix rule, header-looking lines skipped.
+  assert.deepEqual(diffLineKinds('+++ b/x\n+a\n-b'), ['meta', 'add', 'del']);
+});
+
+await step('explain is never offered without keywords, and file names alone do not pass (QA-13)', () => {
+  const bin = card('diff --git a/logo.png b/logo.png\nBinary files a/logo.png and b/logo.png differ', 'New logo', ['logo.png']);
+  assert.equal(buildChallenge('explain', bin), null);
+  for (let i = 0; i < 20; i++) assert.notEqual(chooseChallenge(bin, 1, { allowed: ['explain', 'quiz'] }).quiz.kind, 'explain');
+  const c = card('@@ -1 +1 @@\n-export const rate = 1;\n+export const rate = 2;', 'Rate', ['src/pay.ts']);
+  const ch = buildChallenge('explain', c)!;
+  assert.equal(checkAnswer('explain', ch.answer, 'Looks good to me, the pay stuff is fine, approve it please', c), false);
+  assert.ok(checkAnswer('explain', ch.answer, 'This doubles the exported rate constant from one to two', c));
+  assert.equal(checkAnswer('explain', '', 'any six words at all will do here', c), false);
 });
 
 await step('server: each kind can be passed end to end, and a wrong answer is blocked', async () => {

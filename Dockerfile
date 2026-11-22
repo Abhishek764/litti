@@ -1,5 +1,5 @@
 # Litti — production image
-# Base pinned by digest (node:22-slim, multi-arch index, 2026-11-21). Dependabot bumps it.
+# Base pinned by digest (node:26-slim, multi-arch index). Dependabot bumps it.
 
 # Build: compile TypeScript to dist/
 FROM node:26-slim@sha256:e6bedef217677b276c591795e169840edd9096dbf13f29df8ef8d1856b8820bc AS build

@@ -150,6 +150,70 @@ try {
     }
   });
 
+  // The installed CLI with only ~/.litti/config.env to go on (no LITTI_URL, no APPROVAL_SERVER_PORT in the env).
+  const installed = (home: string, args: string[], cwd?: string) => new Promise<{ code: number | null; out: string }>((resolve) => {
+    const e: Record<string, string | undefined> = { ...process.env, LITTI_HOME: home, CI: '1' };
+    for (const k of ['LITTI_URL', 'APPROVAL_SERVER_PORT', 'LITTI_API_KEY', 'LITTI_SKIP_CWD_ENV']) delete e[k];
+    // Absolute tsx loader: the child may run in a project folder without node_modules.
+    const child = spawn(process.execPath, ['--import', import.meta.resolve('tsx'), join(process.cwd(), 'src/main.ts'), ...args], { env: e, cwd: cwd ?? process.cwd() });
+    let out = '';
+    child.stdout.on('data', d => { out += d; });
+    child.stderr.on('data', d => { out += d; });
+    child.on('close', code => resolve({ code, out }));
+  });
+
+  await step('client CLI uses the port from ~/.litti/config.env; a project .env cannot redirect it (USER-6)', async () => {
+    const home = join(dir, 'home-config-port');
+    mkdirSync(home, { recursive: true });
+    writeFileSync(join(home, 'config.env'), `SECRET_KEY=${'a'.repeat(64)}\nAPPROVAL_SERVER_PORT=${port}\nLITTI_API_KEY=cli-test-key\n`);
+    const proj = join(dir, 'proj-with-env');
+    mkdirSync(proj, { recursive: true });
+    writeFileSync(join(proj, '.env'), 'LITTI_URL=http://127.0.0.1:9\nAPPROVAL_SERVER_PORT=9\n');
+    const r = await installed(home, ['pending'], proj);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /Add MFA column/);
+    // Nothing listening: the message names `litti`, never npm.
+    writeFileSync(join(home, 'config.env'), `SECRET_KEY=${'a'.repeat(64)}\nAPPROVAL_SERVER_PORT=${fallbackPort}\n`);
+    const down = await installed(home, ['pending']);
+    assert.notEqual(down.code, 0);
+    assert.match(down.out, new RegExp(`127\\.0\\.0\\.1:${fallbackPort}`));
+    assert.match(down.out, /Start it with "litti"/);
+    assert.doesNotMatch(down.out, /npm (start|run)/);
+  });
+
+  await step('the undocumented `up` alias is gone: it is an unknown command, not a server', async () => {
+    const r = await entry(join(dir, 'home-up'), ['up'], startedRe);
+    assert.equal(r.started, false, r.out);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /Unknown command: up/);
+  });
+
+  await step('litti install prints next steps: restart the agent, open the local URL', async () => {
+    const home = join(dir, 'home-install');
+    mkdirSync(home, { recursive: true });
+    writeFileSync(join(home, 'config.env'), `SECRET_KEY=${'a'.repeat(64)}\nAPPROVAL_SERVER_PORT=3882\n`);
+    const proj = join(dir, 'proj-install');
+    mkdirSync(proj, { recursive: true });
+    const r = await installed(home, ['install', 'claude', '--dir', proj], proj);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /Restart Claude Code/);
+    assert.match(r.out, /Open http:\/\/127\.0\.0\.1:3882\//);
+    assert.doesNotMatch(r.out, /npm (start|run)/);
+  });
+
+  await step('busy top port 65535 suggests 65534, never 65536', async () => {
+    const busy = createServer();
+    await new Promise<void>((resolve) => { busy.once('error', () => resolve()); busy.listen(65535, '127.0.0.1', () => resolve()); });
+    try {
+      for (const kind of ['start', 'demo']) {
+        const r = await entry(join(dir, `home-top-${kind}`), [kind, '--port', '65535', '--no-open'], startedRe);
+        assert.equal(r.code, 1, `${kind}: ${r.out}`);
+        assert.match(r.out, new RegExp(`litti ${kind} --port 65534`), kind);
+        assert.doesNotMatch(r.out, /65536/);
+      }
+    } finally { busy.close(); }
+  });
+
   console.log(`\n✅ ${passed} CLI checks passed`);
 } catch (err) {
   console.error(`\n❌ CLI test failed after ${passed} checks:`, err);

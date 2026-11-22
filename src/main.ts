@@ -60,10 +60,10 @@ async function serve(kind: 'start' | 'demo', rest: string[]) {
 if (cmd === '--version' || cmd === '-v' || cmd === 'version') {
   console.log(version);
 } else if (cmd === 'help' || cmd === '--help' || cmd === '-h' ||
-  (cmd !== undefined && (['start', 'up', 'demo'].includes(cmd) || cmd.startsWith('-')) && (args.includes('--help') || args.includes('-h')))) {
+  (cmd !== undefined && (['start', 'demo'].includes(cmd) || cmd.startsWith('-')) && (args.includes('--help') || args.includes('-h')))) {
   // Before anything that starts a server or creates ~/.litti.
   console.log(helpText());
-} else if (!cmd || cmd === 'start' || cmd === 'up' || cmd.startsWith('-')) {
+} else if (!cmd || cmd === 'start' || cmd.startsWith('-')) {
   await serve('start', cmd && !cmd.startsWith('-') ? args.slice(1) : args);
 } else if (cmd === 'demo') {
   await serve('demo', args.slice(1));

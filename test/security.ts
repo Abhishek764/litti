@@ -98,15 +98,26 @@ try {
     const gateReq = { agent: 'claude-code', action: 'deploy', command: 'git push origin main', description: 'push', diff: gateDiff, touchedPaths: ['src/pay.ts'] };
     const first = (await app.inject({ method: 'POST', url: '/api/gate', payload: gateReq })).json();
     assert.equal(first.decision, 'deny');
-    // The agent declares the same diff as a harmless read: Tier 0, auto-approved with a token.
+    // The agent declares the same diff as a harmless read. SEC-1c: a diff that changes files is
+    // at least Tier 1 whatever the label says, so it is not auto-approved.
     const self = (await app.inject({ method: 'POST', url: '/api/actions', payload: { agent: 'claude-code', action: 'read', description: 'just reading', diff: gateDiff, touchedPaths: [] } })).json();
-    assert.equal(self.tier, 0);
+    assert.ok(self.tier >= 1, 'a "read" that changes files gets reviewed');
+    assert.equal(self.status, 'pending');
+    const { assessRisk } = await import('../src/rules/tiering.js');
+    assert.match(assessRisk(getPending(self.id)!.actionCard).reasons.join(' '), /diff changes files/);
     const retry = (await app.inject({ method: 'POST', url: '/api/gate', payload: gateReq })).json();
-    assert.equal(retry.decision, 'deny', 'a self-declared Tier 0 action must not satisfy the gate');
+    assert.equal(retry.decision, 'deny', 'a self-declared action must not satisfy the gate');
     assert.equal(retry.id, first.id, 'still the gate\'s own pending review');
-    const shipped = await consume(self.token, gateDiff);
+    // A real Tier 0 (nothing changes) is logged with a token, but that token never ships.
+    const read = (await app.inject({ method: 'POST', url: '/api/actions', payload: { agent: 'claude-code', action: 'read', description: 'list files', diff: 'ls -la', touchedPaths: [] } })).json();
+    assert.equal(read.tier, 0);
+    const shipped = await consume(read.token, 'ls -la');
     assert.equal(shipped.statusCode, 409, 'a Tier 0 token is not a shipping approval');
     assert.match(shipped.json().reason, /Tier 0/);
+    for (const action of ['lint', 'format', 'test']) {
+      const r = (await app.inject({ method: 'POST', url: '/api/actions', payload: { agent: 'bot', action, description: action, diff: '--- a/x.ts\n+++ b/x.ts\n@@ -1 +1 @@\n-a\n+b', touchedPaths: ['x.ts'] } })).json();
+      assert.ok(r.tier >= 1, `${action} that rewrites x.ts is at least Tier 1`);
+    }
   });
 
   await step('SEC-10 failed deploy: deploy-failed receipt, not shippable, gate stays shut; retry re-runs it', async () => {

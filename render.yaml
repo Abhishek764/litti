@@ -6,6 +6,7 @@ services:
     name: litti-connect
     runtime: node
     plan: free
+    autoDeploy: false
     buildCommand: npm ci && npm run build
     startCommand: node dist/broker/server.js
     healthCheckPath: /health

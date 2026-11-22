@@ -1,7 +1,8 @@
 # Litti — production image
+# Base pinned by digest (node:26-slim, multi-arch index). Dependabot bumps it.
 
 # Build: compile TypeScript to dist/
-FROM node:22-slim AS build
+FROM node:26-slim@sha256:e6bedef217677b276c591795e169840edd9096dbf13f29df8ef8d1856b8820bc AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -10,7 +11,16 @@ COPY src ./src
 RUN npm run build
 
 # Run: compiled JavaScript + runtime dependencies only
-FROM node:22-slim
+FROM node:26-slim@sha256:e6bedef217677b276c591795e169840edd9096dbf13f29df8ef8d1856b8820bc
+ARG VERSION=dev
+LABEL org.opencontainers.image.title="Litti" \
+      org.opencontainers.image.description="Proof of review for AI coding agents" \
+      org.opencontainers.image.source="https://github.com/Abhishek764/litti" \
+      org.opencontainers.image.url="https://github.com/Abhishek764/litti" \
+      org.opencontainers.image.documentation="https://github.com/Abhishek764/litti/blob/main/docs/guide/team-setup.md" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.base.name="docker.io/library/node:22-slim"
 WORKDIR /app
 ENV NODE_ENV=production
 

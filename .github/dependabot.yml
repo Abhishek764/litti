@@ -8,6 +8,11 @@ updates:
     groups:
       dev-dependencies:
         dependency-type: development
+    ignore:
+      # 13.x has no prebuilt binary for Windows + Node 22 (install falls back to node-gyp and fails).
+      # Re-enable once its release assets cover every Node version and OS that Litti supports.
+      - dependency-name: better-sqlite3
+        versions: ['>=13.0.0']
   - package-ecosystem: github-actions
     directory: /
     schedule:
@@ -15,3 +20,7 @@ updates:
     groups:
       actions:
         patterns: ['*']
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly

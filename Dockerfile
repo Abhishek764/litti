@@ -2,7 +2,7 @@
 # Base pinned by digest (node:22-slim, multi-arch index, 2026-11-21). Dependabot bumps it.
 
 # Build: compile TypeScript to dist/
-FROM node:22-slim@sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee AS build
+FROM node:26-slim@sha256:e6bedef217677b276c591795e169840edd9096dbf13f29df8ef8d1856b8820bc AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -11,7 +11,7 @@ COPY src ./src
 RUN npm run build
 
 # Run: compiled JavaScript + runtime dependencies only
-FROM node:22-slim@sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee
+FROM node:26-slim@sha256:e6bedef217677b276c591795e169840edd9096dbf13f29df8ef8d1856b8820bc
 ARG VERSION=dev
 LABEL org.opencontainers.image.title="Litti" \
       org.opencontainers.image.description="Proof of review for AI coding agents" \

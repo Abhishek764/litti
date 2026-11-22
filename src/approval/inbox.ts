@@ -56,7 +56,7 @@ export function renderInbox(all: PendingAction[], baseUrl: string, now = Date.no
   .step a { color:var(--accent) }
 </style></head>
 <body><main>
-  <nav aria-label="Main" style="display:flex;align-items:center;gap:8px"><a href="/" style="margin-right:20px"><img src="/brand/litti-logo.svg" alt="Litti" height="30" style="display:block;height:30px;width:auto"></a><a href="/">Inbox</a><a href="/changes">Changes</a><a href="/integrations">Integrations</a><a href="/dashboard.html">Dashboard</a><a href="/docs">Docs</a></nav>
+  <nav aria-label="Main" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><a href="/" style="margin-right:20px"><img src="/brand/litti-logo.svg" alt="Litti" height="30" style="display:block;height:30px;width:auto"></a><a href="/">Inbox</a><a href="/changes">Changes</a><a href="/integrations">Integrations</a><a href="/dashboard.html">Dashboard</a><a href="/docs">Docs</a></nav>
   <h1 style="margin-top:24px">Waiting for review</h1>
   <p class="sub">Open an action, read the diff, pass the check. Nothing runs until enough reviewers pass.</p>
   ${rows ? `<ul class="list">${rows}</ul>

@@ -2,7 +2,9 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { renderInbox, age } from '../src/approval/inbox.js';
-import type { PendingAction } from '../src/types.js';
+import { renderApprovalPage } from '../src/approval/page.js';
+import { buildActionCard } from '../src/agents/builder.js';
+import type { PendingAction, Quiz } from '../src/types.js';
 
 let passed = 0;
 async function step(name: string, fn: () => Promise<void> | void) { await fn(); passed++; console.log(`  ✓ ${name}`); }
@@ -118,6 +120,77 @@ await step('inbox: nothing pending (even with old non-pending rows) shows the Ge
   assert.match(html, /Nothing waiting for review/);
   assert.match(html, /Get started/);
   assert.match(html, /litti install claude/);
+});
+
+/** Every visible form control has an accessible name: label[for], a wrapping <label>, aria-label or aria-labelledby. */
+function unlabelled(html: string): string[] {
+  const bad: string[] = [];
+  for (const m of html.matchAll(/<(input|textarea|select)\b[^>]*>/g)) {
+    const tag = m[0];
+    if (/type="hidden"/.test(tag)) continue;
+    if (/aria-label(ledby)?="[^"]+"/.test(tag)) continue;
+    const id = tag.match(/\bid="([^"]+)"/)?.[1];
+    if (id && new RegExp(`<label[^>]*\\bfor="${id}"`).test(html)) continue;
+    const before = html.slice(0, m.index);
+    if (before.lastIndexOf('<label') > before.lastIndexOf('</label>')) continue;
+    bad.push(tag);
+  }
+  return bad;
+}
+
+const reviewPage = (kind: NonNullable<Quiz['kind']>, extra: Partial<Parameters<typeof renderApprovalPage>[0]> = {}) => renderApprovalPage({
+  card: buildActionCard({ action: 'edit', description: 'Charge in cents', diff: '--- a/p.ts\n+++ b/p.ts\n@@ -1 +1 @@\n-export const v = 1;\n+export const v = 2;', touchedPaths: ['p.ts'], reversible: true, rollbackPlan: '' }),
+  tier: 2, reasons: ['r'], requiredApprovers: 1, approvalsSoFar: 0,
+  quiz: { kind, question: 'What changed?', options: kind === 'quiz' ? ['a', 'b', 'c', 'd'] : kind === 'canary' ? ['Yes', 'No'] : [], correctIndex: -1, subject: 'export const v = 2;' },
+  approver: '', identityLocked: false, allowTyped: false, viewStamp: 's', ticket: '', ...extra,
+});
+
+await step('review page: every input has a label, for every challenge kind and identity mode', () => {
+  for (const kind of ['quiz', 'spot-line', 'type-in', 'canary', 'count', 'explain'] as const) {
+    for (const extra of [{}, { identityLocked: true, approver: 'ana' }, { allowTyped: true }]) {
+      const html = reviewPage(kind, extra);
+      assert.deepEqual(unlabelled(html), [], `${kind}: unlabelled inputs`);
+      if (kind === 'quiz' || kind === 'canary') assert.match(html, /role="radiogroup" aria-labelledby="quizq/, `${kind}: options are a named group`);
+      if (kind === 'type-in' || kind === 'count' || kind === 'explain') assert.match(html, /<label class="q" id="quizq" for="answer">/);
+    }
+  }
+  // The checker itself catches a bare input.
+  assert.equal(unlabelled('<input id="x">').length, 1);
+});
+
+await step('review page: results are announced, focus is visible, spot-the-line works from the keyboard', () => {
+  const html = reviewPage('spot-line');
+  assert.match(html, /<div id="result" role="status" aria-live="polite">/);
+  assert.match(html, /id="pickedline" role="status" aria-live="polite"/);
+  assert.match(html, /:focus-visible\{outline:2px solid/);
+  const lines = html.match(/<div class="ln[^"]*pick"[^>]*>/g) ?? [];
+  assert.equal(lines.length, 5);
+  for (const l of lines) { assert.match(l, /role="button"/); assert.match(l, /tabindex="0"/); assert.match(l, /aria-pressed="false"/); assert.match(l, /aria-label="Line \d+: /); }
+  assert.match(html, /e\.key==='Enter'\|\|e\.key===' '/);
+  assert.match(html, /setAttribute\('aria-pressed','true'\)/);
+  assert.doesNotMatch(reviewPage('quiz'), /opacity:\.7/, 'no faded low-contrast text');
+});
+
+/** WCAG contrast ratio of two #rrggbb colours. */
+function contrast(a: string, b: string): number {
+  const lum = (hex: string) => {
+    const [r, g, bl] = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255).map(c => c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+    return 0.2126 * r + 0.7152 * g + 0.0722 * bl;
+  };
+  const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p);
+  return (x + 0.05) / (y + 0.05);
+}
+
+await step('tier badges: dark text on every tier colour meets WCAG AA (4.5:1) on the review page and inbox', () => {
+  const page = reviewPage('quiz');
+  const vars = Object.fromEntries([...page.matchAll(/--(green|yellow|orange|red):(#[0-9a-f]{6})/g)].map(m => [m[1], m[2]]));
+  for (const c of ['green', 'yellow', 'orange', 'red']) assert.ok(contrast('#0d1117', vars[c]) >= 4.5, `review ${c} ${vars[c]}`);
+  const inbox = renderInbox([], 'http://127.0.0.1:3882');
+  for (const m of inbox.matchAll(/\.t\d \{ background:(#[0-9a-f]{6}) \}/g)) assert.ok(contrast('#0a0d12', m[1]) >= 4.5, `inbox ${m[1]}`);
+  assert.equal([...inbox.matchAll(/\.t\d \{ background:/g)].length, 4);
+  assert.match(inbox, /:focus-visible/);
+  assert.match(inbox, /<nav aria-label="Main"/);
+  assert.deepEqual(unlabelled(inbox), []);
 });
 
 console.log(`\nui: ${passed} passed`);

@@ -210,6 +210,51 @@ try {
     const ok = await send({ ticket: tAna, viewStamp: issueViewStamp(a.id, Date.now() - 45000, reviewerKey('ana')) });
     assert.equal(ok.json().ok, true, ok.json().message);
   });
+
+  await step('P0-10 SEC-11 labelled API keys: the key label is the requester, body agent only a detail', async () => {
+    process.env.LITTI_API_KEYS = 'ci-bot:key-one, nightly:key-two';
+    try {
+      const post = (key: string, agent: string) => app.inject({ method: 'POST', url: '/api/actions', headers: { 'x-litti-key': key }, payload: { agent, action: 'edit', description: 'labelled', diff: DIFF, touchedPaths: ['src/pay.ts'] } });
+      assert.equal((await post('nope', 'x')).statusCode, 401);
+      const r = (await post('key-one', 'alice')).json();
+      const card = getPending(r.id)!.actionCard;
+      assert.equal(card.agent, 'ci-bot', 'the agent cannot name itself "alice"');
+      assert.equal(card.agentDetail, 'alice');
+      assert.equal((await post('key-two', 'nightly')).statusCode, 200);
+      const gate = (await app.inject({ method: 'POST', url: '/api/gate', headers: { 'x-litti-key': 'key-two' }, payload: { agent: 'bob', action: 'deploy', command: 'npm publish', description: 'x', diff: DIFF + '\n+// gate' } })).json();
+      assert.equal(getPending(gate.id)!.actionCard.agent, 'nightly');
+      assert.equal((await app.inject({ url: '/api/pending' })).statusCode, 401, 'LITTI_API_KEYS alone is team mode');
+    } finally { delete process.env.LITTI_API_KEYS; }
+  });
+
+  await step('P0-10 SEC-17 status codes and a boolean reversible', async () => {
+    const send = (id: string, who: string, ago = 45000) => app.inject({ method: 'POST', url: `/approve/${id}/submit`, payload: { approver: who, quizAnswer: sampleAnswer(getPending(id)!), scrolledToBottom: true, viewStamp: issueViewStamp(id, Date.now() - ago) } });
+    assert.equal((await app.inject({ method: 'POST', url: '/approve/nope/submit', payload: {} })).statusCode, 404);
+    const a = await propose({ description: 'codes', action: 'migrate' });
+    assert.equal((await send(a.id, 'bot')).statusCode, 403, 'requester');
+    assert.equal((await send(a.id, 'ana', 2000)).statusCode, 422, 'too fast');
+    assert.equal((await send(a.id, 'ana')).statusCode, 200);
+    assert.equal((await send(a.id, 'ANA')).statusCode, 409, 'already countersigned');
+    await send(a.id, 'ben');
+    assert.equal((await send(a.id, 'cy')).statusCode, 409, 'no longer pending');
+    for (const reversible of ['false', 0, 'yes']) {
+      assert.equal((await app.inject({ method: 'POST', url: '/api/actions', payload: { agent: 'bot', action: 'edit', description: 'x', diff: DIFF, touchedPaths: [], reversible } })).statusCode, 400, String(reversible));
+    }
+    assert.equal((await app.inject({ method: 'POST', url: '/api/actions', payload: { agent: 'bot', action: 'edit', description: 'x', diff: DIFF, touchedPaths: [], reversible: false } })).statusCode, 200);
+  });
+
+  await step('P0-10 SEC-12 quiz distractors also come from the diff; always 4 options', async () => {
+    const { generateQuiz } = await import('../src/agents/gatekeeper.js');
+    const card = (diff: string) => ({ id: 'q', agent: 'a', action: 'migrate' as const, description: 'd', diff, diffHash: 'h', touchedPaths: [], reversible: false, rollbackPlan: '', timestamp: '' });
+    const drop = generateQuiz(card(' SELECT * FROM orders JOIN invoices ON 1;\n-DROP TABLE users;\n+-- gone'));
+    assert.equal(drop.options.length, 4);
+    assert.ok(drop.options.includes('orders') && drop.options.includes('invoices'), 'names from the diff are distractors too, so Ctrl+F does not give the answer away');
+    assert.equal(drop.options[drop.correctIndex], 'users');
+    const sym = generateQuiz(card(' function loadUser() {}\n function renderPage() {}\n+function chargeCard() {}'));
+    assert.equal(sym.options.length, 4);
+    assert.ok(sym.options.includes('loadUser') && sym.options.includes('renderPage'));
+    for (const d of ['+a', '+x: 1;\n-x: 2;', '-color: red;\n+color: blue;']) assert.equal(generateQuiz(card(d)).options.length, 4, d);
+  });
 } finally { await app.close(); }
 
 console.log(`\nsecurity: ${passed} passed`);

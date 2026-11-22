@@ -11,7 +11,10 @@ export type ActionKind =
 /** A proposed action posted by the builder agent. */
 export interface ActionCard {
   id: string;
+  /** Requester. With labelled API keys (LITTI_API_KEYS) this is the key's label, never free text. */
   agent: string;
+  /** The free-text agent name the caller sent, when it differs from the key label. Display only. */
+  agentDetail?: string;
   action: ActionKind;
   description: string;
   diff: string;

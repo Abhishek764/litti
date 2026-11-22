@@ -138,7 +138,7 @@ async function deliverApproved(p: PendingAction, approvals: ApprovalSubmission[]
 function retryAllowed(headers: Record<string, unknown>): boolean {
   const admin = process.env.LITTI_ADMIN_KEY;
   if (admin) return keyMatches(headers['x-litti-admin-key'], admin);
-  return !process.env.LITTI_API_KEY;
+  return !agentKeysSet();
 }
 const retrying = new Set<string>();
 
@@ -151,9 +151,44 @@ function keyMatches(given: unknown, key: string): boolean {
   return g.length === k.length && timingSafeEqual(g, k);
 }
 
+/** Labelled agent keys: LITTI_API_KEYS=label:key,label2:key2. */
+export function parseApiKeys(raw = process.env.LITTI_API_KEYS ?? ''): { label: string; key: string }[] {
+  return raw.split(',').map(s => s.trim()).filter(Boolean).map(s => {
+    const i = s.indexOf(':');
+    return i > 0 ? { label: s.slice(0, i).trim().slice(0, 64), key: s.slice(i + 1).trim() } : { label: '', key: s };
+  }).filter(k => k.key);
+}
+
+/** Team mode: some agent key is configured. */
+function agentKeysSet(): boolean {
+  return Boolean(process.env.LITTI_API_KEY || parseApiKeys().length);
+}
+
+/**
+ * Who is calling the agent API. With LITTI_API_KEYS the key's label IS the requester, so an agent
+ * can't pick a reviewer's name (or "nobody") as its own (SEC-11). LITTI_API_KEY has no label.
+ */
+function apiPrincipal(given: unknown): { ok: boolean; label?: string } {
+  const labelled = parseApiKeys();
+  const single = process.env.LITTI_API_KEY;
+  if (!labelled.length && !single) return { ok: true };
+  for (const k of labelled) if (keyMatches(given, k.key)) return { ok: true, ...(k.label ? { label: k.label } : {}) };
+  if (single && keyMatches(given, single)) return { ok: true };
+  return { ok: false };
+}
+
+/** The requester: the key's label when there is one; the body's `agent` is then only a detail. */
+function requesterOf(b: { agent?: unknown }, label?: string): { agent?: string; agentDetail?: string } {
+  const named = typeof b.agent === 'string' && b.agent.trim() ? b.agent.trim().slice(0, 64) : undefined;
+  if (!label) return { agent: named };
+  return { agent: label, ...(named && named !== label ? { agentDetail: named } : {}) };
+}
+function withDetail(card: ActionCard, detail?: string): void {
+  if (detail) card.agentDetail = detail;
+}
+
 function apiKeyOk(given: unknown): boolean {
-  const key = process.env.LITTI_API_KEY;
-  return !key || keyMatches(given, key);
+  return apiPrincipal(given).ok;
 }
 
 /**
@@ -178,7 +213,7 @@ function agentIsLocalReviewer(agent: string): boolean {
 
 /** The inbox lists every pending action. Open locally; behind SSO in production. */
 function inboxAllowed(headers: Record<string, unknown>): boolean {
-  if (!process.env.LITTI_API_KEY) return true;
+  if (!agentKeysSet()) return true;
   const h = process.env.LITTI_IDENTITY_HEADER?.toLowerCase();
   return Boolean(h && headers[h]);
 }
@@ -281,7 +316,8 @@ export function buildServer(opts: { logger?: boolean } = {}): FastifyInstance {
   // Submit a review.
   app.post<{ Params: { id: string }; Body: Partial<ApprovalSubmission> & { viewStamp?: string; ticket?: string } }>('/approve/:id/submit', async (req, reply) => {
     const pending = getPending(req.params.id);
-    if (!pending || pending.status !== 'pending') return { ok: false, message: '🔒 Action is not pending.' };
+    if (!pending) return reply.code(404).send({ ok: false, message: 'Unknown action.' });
+    if (pending.status !== 'pending') return reply.code(409).send({ ok: false, message: `🔒 Action is not pending (it is ${pending.status}).` });
     const body = req.body ?? {};
     const card = pending.actionCard;
 
@@ -312,10 +348,10 @@ export function buildServer(opts: { logger?: boolean } = {}): FastifyInstance {
     // Separation of duties: the requester can't approve, and nobody counts twice (normalised ids,
     // so "Bob", "bob​" and a Cyrillic "Bоb" are one person).
     if (who.id === reviewerKey(card.agent)) {
-      return { ok: false, message: who.source === 'local' ? localClash(card.agent) : '🔒 The requester cannot approve their own action.' };
+      return reply.code(403).send({ ok: false, message: who.source === 'local' ? localClash(card.agent) : '🔒 The requester cannot approve their own action.' });
     }
     if (pending.currentApprovals.some(a => (a.reviewerId ?? reviewerKey(a.approver)) === who.id)) {
-      return { ok: false, message: `🔒 ${sub.approver} already countersigned. Tier ${pending.tier} needs ${pending.requiredApprovers} different reviewers.` };
+      return reply.code(409).send({ ok: false, message: `🔒 ${sub.approver} already countersigned. Tier ${pending.tier} needs ${pending.requiredApprovers} different reviewers.` });
     }
 
     // Rubber-stamp detection first — the serious signal.
@@ -328,16 +364,16 @@ export function buildServer(opts: { logger?: boolean } = {}): FastifyInstance {
       setSetting('pending_tier_bump', '1');
       announce(`⚠️ @${sub.approver} ${rs.reason} Blocked. All reviews on "${card.description}" reset, and the next action's tier is bumped +1.`,
         { kind: 'rubber-stamped', card, approvers: [sub.approver], requiredApprovers: pending.requiredApprovers, attentionScore: score });
-      return { ok: false, message: `⚠️ Rubber-stamp blocked: ${rs.reason}` };
+      return reply.code(422).send({ ok: false, message: `⚠️ Rubber-stamp blocked: ${rs.reason}` });
     }
 
     if (sub.timeSpentMs < minTimeMs(pending.tier)) {
-      return { ok: false, message: `Please review more carefully — Tier ${pending.tier} needs at least ${minTimeMs(pending.tier) / 1000}s.` };
+      return reply.code(422).send({ ok: false, message: `Please review more carefully — Tier ${pending.tier} needs at least ${minTimeMs(pending.tier) / 1000}s.` });
     }
     if (card.diff.split('\n').length > 20 && !sub.scrolledToBottom) {
-      return { ok: false, message: 'Please scroll through the entire diff first.' };
+      return reply.code(422).send({ ok: false, message: 'Please scroll through the entire diff first.' });
     }
-    if (!quizCorrect) return { ok: false, message: 'Please review the diff more carefully — your answer to the comprehension check is wrong.' };
+    if (!quizCorrect) return reply.code(422).send({ ok: false, message: 'Please review the diff more carefully — your answer to the comprehension check is wrong.' });
 
     const approvals = [...pending.currentApprovals, sub];
     if (approvals.length < pending.requiredApprovers) {
@@ -357,19 +393,21 @@ export function buildServer(opts: { logger?: boolean } = {}): FastifyInstance {
     const avgAttention = result.attention;
     announce(`${result.message} — "${card.description}"\nReviewed by ${approvals.map(a => a.approver).join(', ')} · attention ${avgAttention}/100 · diff ${diffHash.slice(0, 12)}… · receipt chained.`,
       { kind: result.ok ? 'approved' : 'execution-failed', card, approvers: approvals.map(a => a.approver), requiredApprovers: pending.requiredApprovers, attentionScore: avgAttention });
-    return { ok: result.ok, message: result.message };
+    return reply.code(result.ok ? 200 : 502).send({ ok: result.ok, message: result.message });
   });
 
   // Agent API: propose an action.
   app.post<{ Body: Partial<ActionCard> }>('/api/actions', (req, reply) => {
-    if (!apiKeyOk(req.headers['x-litti-key'])) return reply.code(401).send({ ok: false, message: 'Invalid or missing x-litti-key header.' });
+    const who = apiPrincipal(req.headers['x-litti-key']);
+    if (!who.ok) return reply.code(401).send({ ok: false, message: 'Invalid or missing x-litti-key header.' });
     const b = req.body ?? {};
+    if (b.reversible !== undefined && typeof b.reversible !== 'boolean') return reply.code(400).send({ ok: false, message: 'reversible must be true or false (a JSON boolean).' });
     if (!b.action || !ACTIONS.includes(b.action) || !b.description || typeof b.diff !== 'string' || !Array.isArray(b.touchedPaths)) {
       return reply.code(400).send({ ok: false, message: `Required: action (${ACTIONS.join('|')}), description, diff, touchedPaths[]. Optional: agent, reversible, rollbackPlan.` });
     }
     if (Buffer.byteLength(b.diff) > MAX_DIFF_BYTES) return reply.code(413).send({ ok: false, message: 'Diff too large (max 512 KB).' });
     const card = buildActionCard({
-      agent: typeof b.agent === 'string' && b.agent ? b.agent.slice(0, 64) : undefined,
+      agent: requesterOf(b, who.label).agent,
       action: b.action,
       description: String(b.description).slice(0, 300),
       diff: b.diff,
@@ -377,6 +415,7 @@ export function buildServer(opts: { logger?: boolean } = {}): FastifyInstance {
       reversible: b.reversible ?? true,
       rollbackPlan: String(b.rollbackPlan ?? '').slice(0, 2000),
     });
+    withDetail(card, requesterOf(b, who.label).agentDetail);
     if (agentIsLocalReviewer(card.agent)) return reply.code(400).send({ ok: false, message: localClash(card.agent) });
     const { id, url, tier } = registerPending(card, baseUrlFor(req));
 
@@ -394,16 +433,18 @@ export function buildServer(opts: { logger?: boolean } = {}): FastifyInstance {
   // Agent hooks (Claude Code, Codex, OpenCode): may this risky command run now?
   // Same diff + command → same action, so a retry after approval is allowed exactly once.
   app.post<{ Body: Partial<ActionCard> & { command?: string } }>('/api/gate', (req, reply) => {
-    if (!apiKeyOk(req.headers['x-litti-key'])) return reply.code(401).send({ ok: false, decision: 'deny', message: '🔒 Litti: invalid or missing x-litti-key. Set LITTI_API_KEY for the agent hook.' });
+    const who = apiPrincipal(req.headers['x-litti-key']);
+    if (!who.ok) return reply.code(401).send({ ok: false, decision: 'deny', message: '🔒 Litti: invalid or missing x-litti-key. Set LITTI_API_KEY for the agent hook.' });
     const b = req.body ?? {};
     if (!b.action || !ACTIONS.includes(b.action) || typeof b.diff !== 'string' || !b.description) {
       return reply.code(400).send({ ok: false, decision: 'deny', message: '🔒 Litti: malformed gate request.' });
     }
+    if (b.reversible !== undefined && typeof b.reversible !== 'boolean') return reply.code(400).send({ ok: false, decision: 'deny', message: '🔒 Litti: reversible must be a JSON boolean.' });
     if (Buffer.byteLength(b.diff) > MAX_DIFF_BYTES) {
       return reply.code(413).send({ ok: false, decision: 'deny', message: '🔒 Litti: the change is over 512 KB — too large to review in one go. Split it into smaller commits.' });
     }
     const card = buildActionCard({
-      agent: typeof b.agent === 'string' && b.agent ? b.agent.slice(0, 64) : undefined,
+      agent: requesterOf(b, who.label).agent,
       action: b.action,
       description: String(b.description).slice(0, 300),
       diff: b.diff,
@@ -411,6 +452,7 @@ export function buildServer(opts: { logger?: boolean } = {}): FastifyInstance {
       reversible: b.reversible ?? false,
       rollbackPlan: String(b.rollbackPlan ?? '').slice(0, 2000),
     });
+    withDetail(card, requesterOf(b, who.label).agentDetail);
     if (agentIsLocalReviewer(card.agent)) return reply.code(400).send({ ok: false, decision: 'deny', message: localClash(card.agent) });
     const base = baseUrlFor(req);
     const denyMsg = (p: { id: string; tier: number; requiredApprovers: number; approvals: number }, url: string, fresh: boolean) => [
@@ -524,7 +566,7 @@ export function buildServer(opts: { logger?: boolean } = {}): FastifyInstance {
   // Dashboard data.
   // Receipts contain full diffs: only agents with the API key, or people allowed into the inbox.
   const evidenceAllowed = (h: Record<string, unknown>) =>
-    (process.env.LITTI_API_KEY && h['x-litti-key'] !== undefined ? apiKeyOk(h['x-litti-key']) : false) || inboxAllowed(h);
+    (agentKeysSet() && h['x-litti-key'] !== undefined ? apiKeyOk(h['x-litti-key']) : false) || inboxAllowed(h);
   const denyEvidence = (reply: any) => reply.code(401).send({ ok: false, message: 'Sign in (SSO) or send x-litti-key to read receipts.' });
   app.get('/api/receipts', (req, reply) => (evidenceAllowed(req.headers) ? allReceipts().slice().reverse() : denyEvidence(reply)));
   app.get('/api/chain/verify', (req, reply) => (evidenceAllowed(req.headers) ? verifyChain() : denyEvidence(reply)));
@@ -536,9 +578,9 @@ export function buildServer(opts: { logger?: boolean } = {}): FastifyInstance {
     if (!demoMode()) return reply.code(404).send({ ok: false, message: 'Not found.' });
     const receipts = allReceipts();
     const target = req.body?.id ?? receipts[Math.floor(receipts.length / 2)]?.id;
-    if (!target) return { ok: false, message: 'No receipts to corrupt.' };
+    if (!target) return reply.code(409).send({ ok: false, message: 'No receipts to corrupt.' });
     try { corruptReceipt(target, createHash('sha256').update('tampered-' + Date.now()).digest('hex')); }
-    catch { return { ok: false, message: 'Tamper disabled — only available in demo mode.' }; }
+    catch { return reply.code(403).send({ ok: false, message: 'Tamper disabled — only available in demo mode.' }); }
     return { ok: true, message: `Corrupted receipt ${target}` };
   });
 

@@ -13,7 +13,9 @@
  *
  * We never block until a timeout: a hook that times out fails open in most agents.
  */
-import { readChanges } from '../changes/git.js';
+import { resolve } from 'node:path';
+import { readChanges, readOutgoing, splitDiff, type ChangeScope } from '../changes/git.js';
+import { gitSubcommandIndex, progName } from './classify.js';
 
 export interface GateDecision {
   decision: 'allow' | 'deny';
@@ -43,15 +45,106 @@ export function extractCommand(payload: any): string | null {
   return typeof c === 'string' ? c : null;
 }
 
-/** The diff a risky command would ship: the command itself as a pseudo-file, plus the working tree. */
-export async function gateDiff(command: string, cwd: string): Promise<{ diff: string; paths: string[]; branch: string }> {
-  const cmdBlock = `diff --git a/.litti/command b/.litti/command\n--- a/.litti/command\n+++ b/.litti/command\n@@ -0,0 +1 @@\n+${command.replace(/\r?\n/g, ' ')}`;
-  try {
-    const c = await readChanges(cwd);
-    return { diff: c.files.length ? `${cmdBlock}\n${c.diff}` : cmdBlock, paths: c.files.map(f => f.path), branch: c.branch };
-  } catch {
-    return { diff: cmdBlock, paths: [], branch: '' };
+const NEUTRAL = new Set(['cd', 'pushd', 'popd', 'set-location', 'sl', 'echo', 'true', ':', 'set', 'export', 'printf', 'write-host', 'write-output']);
+
+export interface ReviewPlan {
+  /** Repository the command acts on (after `cd X &&` and `git -C X`). */
+  repo: string;
+  /** Working-tree changes to review, or null when only commits ship (`git push` alone). */
+  scope: ChangeScope | null;
+  /** Review the commits a push would send. */
+  push: boolean;
+  /** The command is a git command, so it needs a readable repository. */
+  needsRepo: boolean;
+}
+
+/** git commit: -a/--all or pathspecs commit tracked work-tree changes; otherwise only the index. */
+function commitScope(args: string[]): ChangeScope {
+  const withValue = ['-m', '--message', '-F', '--file', '-C', '-c', '--reuse-message', '--reedit-message', '-t', '--template', '--author', '--date', '--fixup', '--squash', '--cleanup', '--trailer', '-S'];
+  for (let i = 0; i < args.length; i++) {
+    const w = args[i];
+    if (w === '--') return i + 1 < args.length ? 'tracked' : 'staged';
+    if (w === '--all' || w === '--include' || w === '-i' || w === '--only' || w === '-o') return 'tracked';
+    if (w.startsWith('--')) { if (withValue.includes(w)) i++; continue; }
+    if (w.startsWith('-')) {
+      for (const ch of w.slice(1)) {
+        if (ch === 'a') return 'tracked';
+        if ('mFcCt'.includes(ch)) { if (w.endsWith(ch)) i++; break; }
+      }
+      continue;
+    }
+    return 'tracked'; // a pathspec
   }
+  return 'staged';
+}
+
+/** Work out what a risky command would ship, and from which repository. */
+export function reviewPlan(commands: string[][], cwd: string): ReviewPlan {
+  let dir = cwd;
+  let repo = '';
+  const real: string[][] = [];
+  let push = false;
+  let commit: ChangeScope | null = null;
+  let needsRepo = false;
+  for (const argv of commands) {
+    const p = progName(argv[0]);
+    if (['cd', 'pushd', 'set-location', 'sl'].includes(p) && argv[1] && !argv[1].startsWith('-')) { dir = resolve(dir, argv[1]); continue; }
+    if (NEUTRAL.has(p)) continue;
+    real.push(argv);
+    if (p !== 'git') continue;
+    needsRepo = true;
+    const i = gitSubcommandIndex(argv);
+    const c = argv.slice(1, i).indexOf('-C');
+    const at = c >= 0 && argv[c + 2] ? resolve(dir, argv[c + 2]) : dir;
+    const sub = argv[i];
+    if (sub === 'push') { push = true; repo ||= at; }
+    if (sub === 'commit') { commit = commitScope(argv.slice(i + 1)); repo ||= at; }
+  }
+  repo ||= dir;
+  const onlyGit = (sub: string) => real.length > 0 && real.every(a => progName(a[0]) === 'git' && a[gitSubcommandIndex(a)] === sub);
+  // A lone push ships commits only; a lone commit ships the index (or tracked files with -a);
+  // anything else (git add && git commit, npm publish, rm -rf …) is reviewed against the whole tree.
+  const scope: ChangeScope | null = onlyGit('push') ? null : real.length === 1 && commit ? commit : 'all';
+  return { repo, scope, push, needsRepo };
+}
+
+const block = (path: string, lines: string[]) =>
+  `diff --git a/${path} b/${path}\n--- a/${path}\n+++ b/${path}\n@@ -0,0 +1,${lines.length} @@\n${lines.map(l => `+${l}`).join('\n')}`;
+
+/**
+ * The diff a risky command would ship, bound into the review: the command itself as a pseudo-file,
+ * the commits a push sends (SHAs listed, so a new commit means a new review) and their diff, and the
+ * working-tree changes the command takes. Anything unreadable or incomplete is an error: the gate
+ * then denies instead of letting a reviewer approve a command they can't see the effect of.
+ */
+export async function gateDiff(command: string, cwd: string, commands = classify(command).commands):
+  Promise<{ diff: string; paths: string[]; branch: string; repo: string } | { error: string; repo: string }> {
+  const parts = [block('.litti/command', [command.replace(/\r?\n/g, ' ')])];
+  const plan = reviewPlan(commands, cwd);
+  const paths: string[] = [];
+  let branch = '';
+  try {
+    if (plan.push) {
+      const out = await readOutgoing(plan.repo);
+      if (out.truncated) return { repo: plan.repo, error: `the push sends ${out.commits.length} commits or more than 512 KB of changes, too much to review in one go. Push smaller pieces.` };
+      parts.push(block('.litti/commits', out.commits.length
+        ? [`push sends ${out.commits.length} commit(s) ${out.upstream ? `ahead of ${out.upstream}` : 'that no remote has yet'}:`, ...out.commits]
+        : [`nothing ahead of ${out.upstream || 'the remotes'}`]));
+      if (out.diff) { parts.push(out.diff.replace(/\n$/, '')); paths.push(...splitDiff(out.diff).map(f => f.path)); }
+    }
+    if (plan.scope) {
+      const c = await readChanges(plan.repo, plan.scope);
+      if (c.truncated) return { repo: plan.repo, error: 'the change is too large to review in one go (over 512 KB, over 200 new files, or a file git can\'t read). Split it into smaller commits.' };
+      branch = c.branch;
+      if (c.files.length) { parts.push(c.diff); paths.push(...c.files.map(f => f.path)); }
+    }
+  } catch (err) {
+    const notRepo = /Not a git repository/.test((err as Error).message);
+    // Outside git (vercel --prod in a plain folder) the command itself is all there is to review.
+    if (notRepo && !plan.needsRepo) return { diff: parts[0], paths: [], branch: '', repo: plan.repo };
+    return { repo: plan.repo, error: notRepo ? `${plan.repo} is not a git repository Litti can read.` : 'Litti could not read the changes (git failed or the diff is too large).' };
+  }
+  return { diff: parts.join('\n'), paths: [...new Set(paths)], branch, repo: plan.repo };
 }
 
 export interface GateOptions {
@@ -70,7 +163,14 @@ export async function gate(command: string, cwd: string, opts: GateOptions = {})
   const url = (opts.url ?? process.env.LITTI_URL ?? `http://127.0.0.1:${process.env.APPROVAL_SERVER_PORT || 3847}`).replace(/\/$/, '');
   const agent = opts.agent ?? process.env.LITTI_AGENT_NAME ?? 'agent';
   const failOpen = opts.failOpen ?? process.env.LITTI_HOOK_FAIL_OPEN === 'true';
-  const { diff, paths, branch } = await gateDiff(command, cwd);
+  const shipped = await gateDiff(command, cwd, c.commands);
+  if ('error' in shipped) {
+    return {
+      decision: 'deny',
+      reason: `🔒 Litti blocked "${command.slice(0, 120)}" (${c.why}): ${shipped.error} Nothing was sent for review. Do not work around this block; tell the user.`,
+    };
+  }
+  const { diff, paths, branch } = shipped;
   const headers: Record<string, string> = { 'content-type': 'application/json', 'x-litti-agent': '1' };
   const key = opts.apiKey ?? process.env.LITTI_API_KEY;
   if (key) headers['x-litti-key'] = key;

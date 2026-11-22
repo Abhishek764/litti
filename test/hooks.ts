@@ -146,7 +146,8 @@ try {
     const p = getPending(firstId)!;
     assert.equal(p.actionCard.agent, 'claude-code');
     assert.ok(p.actionCard.diff.includes('+git push origin main'), 'command is part of what is reviewed');
-    assert.ok(p.actionCard.diff.includes('price = 100'), 'working-tree diff is part of what is reviewed');
+    assert.ok(!p.actionCard.diff.includes('price = 100'), 'uncommitted edits are not pushed, so not reviewed for a push');
+    assert.ok(p.actionCard.diff.includes('.litti/commits') && p.actionCard.diff.includes('price = 1;'), 'the unpushed commits are what is reviewed');
     const again = await gate('git push origin main', repo, opts);
     assert.equal(again.decision, 'deny');
     assert.equal(again.actionId, firstId, 'no duplicate review request');
@@ -172,6 +173,57 @@ try {
     const after = await gate('npm publish', repo, opts);
     assert.equal(after.decision, 'deny');
     assert.notEqual(after.actionId, d.actionId);
+  });
+
+  await step('P0-7 review what ships: push = commits ahead (SHAs bound), commit -am = tracked, commit = staged', async () => {
+    const r2 = mkdtempSync(join(tmpdir(), 'litti-hooks-push-'));
+    const bare = mkdtempSync(join(tmpdir(), 'litti-hooks-bare-'));
+    const g = (...a: string[]) => execFileSync('git', ['-C', r2, ...a], { stdio: 'pipe' }).toString().trim();
+    try {
+      execFileSync('git', ['init', '-q', '--bare', bare]);
+      g('init', '-q'); g('config', 'user.email', 't@e.test'); g('config', 'user.name', 'T'); g('config', 'core.autocrlf', 'false');
+      writeFileSync(join(r2, 'db.sql'), 'select 1;\n');
+      g('add', '.'); g('commit', '-q', '-m', 'init');
+      g('remote', 'add', 'origin', bare); g('push', '-q', '-u', 'origin', 'HEAD');
+      writeFileSync(join(r2, 'db.sql'), 'DROP TABLE users;\n');
+      g('commit', '-q', '-am', 'v2 DROP EVERYTHING');
+      const sha = g('rev-parse', 'HEAD');
+      writeFileSync(join(r2, 'notes.txt'), 'untracked\n');
+      const { gateDiff } = await import('../src/integrations/gate.js');
+      const push = await gateDiff('git push', r2) as { diff: string };
+      assert.ok(push.diff.includes(`${sha} v2 DROP EVERYTHING`), 'commit SHA + subject bound into the review');
+      assert.ok(push.diff.includes('+DROP TABLE users;'), 'the pushed change is shown');
+      assert.ok(!push.diff.includes('untracked'), 'untracked files do not ship with a push');
+      const viaC = await gateDiff(`git -C "${r2}" push`, repo) as { diff: string };
+      assert.equal(viaC.diff.replace(/^\+git.*$/m, ''), push.diff.replace(/^\+git.*$/m, ''), 'git -C <repo> reviews that repo');
+      assert.ok((await gateDiff(`cd "${r2}" && git push`, repo) as { diff: string }).diff.includes(sha), 'cd <repo> && git push');
+      // A new commit after approval changes what is reviewed (the SHA list is in the bound diff).
+      writeFileSync(join(r2, 'db.sql'), 'DROP TABLE orders;\n'); g('commit', '-q', '-am', 'more');
+      assert.notEqual((await gateDiff('git push', r2) as { diff: string }).diff, push.diff);
+
+      // commit -am: tracked edits only; plain commit: the index only.
+      writeFileSync(join(r2, 'db.sql'), 'select 2;\n');
+      const am = await gateDiff('git commit -am "x"', r2) as { diff: string };
+      assert.ok(am.diff.includes('+select 2;') && !am.diff.includes('untracked'), 'commit -am: tracked changes, no untracked files');
+      writeFileSync(join(r2, 'staged.txt'), 'staged\n'); g('add', 'staged.txt');
+      const plain = await gateDiff('git commit -m "x"', r2) as { diff: string };
+      assert.ok(plain.diff.includes('+staged') && !plain.diff.includes('+select 2;'), 'commit: staged only');
+      const chain = await gateDiff('git add -A && git commit -m x', r2) as { diff: string };
+      assert.ok(chain.diff.includes('+select 2;') && chain.diff.includes('untracked'), 'add -A && commit: whole tree');
+
+      // Unreadable or incomplete ⇒ deny, never "command only".
+      const notRepo = mkdtempSync(join(tmpdir(), 'litti-hooks-plain-'));
+      const called = { n: 0 };
+      const fetchImpl = async () => { called.n++; throw new Error('must not be called'); };
+      const d = await gate('git push', notRepo, { ...opts, fetchImpl });
+      assert.equal(d.decision, 'deny'); assert.match(d.reason, /not a git repository/);
+      for (let i = 0; i < 205; i++) writeFileSync(join(r2, `junk-${i}.txt`), `${i}\n`);
+      const big = await gate('npm publish', r2, { ...opts, fetchImpl });
+      assert.equal(big.decision, 'deny'); assert.match(big.reason, /too large/);
+      assert.equal(called.n, 0, 'nothing sent for review');
+      assert.ok(!('error' in await gateDiff('vercel --prod', notRepo)), 'a non-git command outside git reviews the command');
+      rmSync(notRepo, { recursive: true, force: true });
+    } finally { rmSync(r2, { recursive: true, force: true }); rmSync(bare, { recursive: true, force: true }); }
   });
 
   await step('fail closed when Litti is down; LITTI_HOOK_FAIL_OPEN opts out', async () => {
@@ -225,6 +277,7 @@ try {
     const proj = mkdtempSync(join(tmpdir(), 'litti-envproj-'));
     const home = mkdtempSync(join(tmpdir(), 'litti-envhome-'));
     try {
+      execFileSync('git', ['init', '-q', proj]); // git commands are only reviewed inside a repository
       writeFileSync(join(proj, '.env'), 'LITTI_HOOK_FAIL_OPEN=true\nLITTI_GATE_COMMIT=false\nLITTI_URL=http://127.0.0.1:9\n');
       // config.env (owned by the user) names the real server's port; the hook must use it.
       writeFileSync(join(home, 'config.env'), `APPROVAL_SERVER_PORT=${new URL(URL_).port}\nSECRET_KEY=not-for-the-hook\n`);

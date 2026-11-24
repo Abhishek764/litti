@@ -38,7 +38,8 @@ export function notARepoMessage(env = process.env): string {
 }
 
 export function registerChangesRoutes(app: FastifyInstance, deps: ChangesDeps): void {
-  const agentKeySet = () => Boolean(process.env.LITTI_API_KEY);
+  // Team mode if any agent key is configured: single LITTI_API_KEY or labelled LITTI_API_KEYS.
+  const agentKeySet = () => Boolean(process.env.LITTI_API_KEY || process.env.LITTI_API_KEYS?.trim());
 
   /**
    * Agent: valid x-litti-key (or, with no key configured, the x-litti-agent: 1 header).

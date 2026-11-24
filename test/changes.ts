@@ -145,6 +145,14 @@ try {
     assert.ok(p.quiz.kind, 'has a comprehension check');
   });
 
+  await step('labelled keys only (LITTI_API_KEYS) also mean team mode: Changes needs sign-in, notes need a key', async () => {
+    process.env.LITTI_API_KEYS = 'ci-bot:labelled-key-123';
+    try {
+      assert.equal((await app.inject({ method: 'GET', url: '/changes' })).statusCode, 401);
+      assert.equal((await app.inject({ method: 'GET', url: '/api/notes', headers: agent })).statusCode, 401, 'x-litti-agent alone is not enough');
+    } finally { delete process.env.LITTI_API_KEYS; }
+  });
+
   await step('not a git repo: clear error', async () => {
     const prev = process.env.LITTI_REPO_PATH;
     process.env.LITTI_REPO_PATH = tmpdir();

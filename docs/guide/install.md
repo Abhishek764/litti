@@ -11,7 +11,7 @@ Litti runs on your machine (or a server) as one command. Installing takes about 
 ## Install
 
 ```bash
-npm install -g litti
+npm install -g litti-cli
 ```
 
 ## Start it
@@ -44,14 +44,14 @@ litti --version
 ## Try without installing
 
 ```bash
-npx litti
+npx litti-cli
 ```
 
 For agent hooks, prefer the global install: hooks point at Litti's install folder, and `npx` may clean its cache.
 
 ## Run it with Docker (team server)
 
-The Docker setup is for a shared team server, not for your laptop (use `npm install -g litti` there). It needs a `.env` next to `docker-compose.yml`:
+The Docker setup is for a shared team server, not for your laptop (use `npm install -g litti-cli` there). It needs a `.env` next to `docker-compose.yml`:
 
 ```bash
 cp .env.example .env   # set SECRET_KEY, LITTI_API_KEY, LITTI_ADMIN_KEY and PUBLIC_URL

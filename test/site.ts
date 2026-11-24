@@ -22,7 +22,7 @@ try {
 
   step('landing page, every docs page, 404 and assets are built', () => {
     assert.equal(r.base, '/litti/');
-    assert.match(pages.get('index.html')!, /npm install -g litti/);
+    assert.match(pages.get('index.html')!, /npm install -g litti-cli/);
     assert.match(pages.get('index.html')!, /litti demo/);
     assert.ok(!pages.get('index.html')!.includes('%SITE_URL%'), 'site URL substituted');
     for (const p of ORDER) assert.match(pages.get(p.slug === 'index' ? 'docs/index.html' : `docs/${p.slug}/index.html`)!, /aria-current="page"/, p.slug);

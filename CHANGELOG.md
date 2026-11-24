@@ -8,7 +8,9 @@ All notable changes to Litti are listed here. The format follows
 
 ## [0.4.0] - 2026-11-24
 
-The first release published to npm.
+The first release published to npm, as **`litti-cli`** (npm keeps the bare name `litti` from
+new packages because it is close to existing ones). Install with `npm install -g litti-cli`;
+the command is still `litti`.
 
 ### Breaking
 - **Node.js 22 or newer is required** (`engines.node >=22`). Node 20 is end-of-life. Prebuilt

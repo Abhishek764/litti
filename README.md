@@ -8,7 +8,7 @@
 ### Proof that a human actually read what their AI agent is about to ship.
 
 [![CI](https://github.com/Abhishek764/litti/actions/workflows/ci.yml/badge.svg)](https://github.com/Abhishek764/litti/actions/workflows/ci.yml)
-[![npm](https://img.shields.io/npm/v/litti)](https://www.npmjs.com/package/litti)
+[![npm](https://img.shields.io/npm/v/litti-cli)](https://www.npmjs.com/package/litti-cli)
 [![tests: 161 passing](https://img.shields.io/badge/tests-161%20passing-brightgreen.svg)](#litti-by-the-numbers)
 [![Node 22+](https://img.shields.io/badge/node-%E2%89%A522-339933.svg)](https://nodejs.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -56,7 +56,7 @@ Approvals are bound to the exact diff, used once, and chained into receipts anyo
 You need **Node.js 22+** and Git.
 
 ```bash
-npm install -g litti
+npm install -g litti-cli
 litti demo                          # see it work: sample reviews, try answering wrong
 cd your-project && litti install claude   # gate your agent (also: codex, opencode, all)
 ```

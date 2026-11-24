@@ -1,5 +1,5 @@
 # Litti in Docker — for a team server. For personal use on your own machine,
-# use `npm install -g litti && litti` instead (no setup, keys are created for you).
+# use `npm install -g litti-cli && litti` instead (no setup, keys are created for you).
 #
 #   cp .env.example .env    # then set, at least:
 #     SECRET_KEY=…          # 32+ random chars (node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")

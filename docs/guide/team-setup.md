@@ -26,7 +26,7 @@ docker compose up -d
 
 `docker-compose.yml` requires the `.env` file. Inside the container Litti listens on `0.0.0.0`, and Litti refuses to start on a non-loopback address without an agent key. The port is published on **127.0.0.1 only**, so nothing outside the server can reach it yet. Data lives in the `litti-data` volume (`/data/litti.db`). Back it up.
 
-Without Docker: `npm install -g litti`, put the same settings in `~/.litti/config.env`, and run `litti --no-open` on any machine with Node 22+. Keep `HOST=127.0.0.1` there too.
+Without Docker: `npm install -g litti-cli`, put the same settings in `~/.litti/config.env`, and run `litti --no-open` on any machine with Node 22+. Keep `HOST=127.0.0.1` there too.
 
 ## 3. Put https and your login in front
 
@@ -61,7 +61,7 @@ If the webhook fails, the action is marked `deploy-failed` and nothing shipped. 
 On each developer's machine:
 
 ```bash
-npm install -g litti
+npm install -g litti-cli
 litti install all --dir path/to/project
 ```
 

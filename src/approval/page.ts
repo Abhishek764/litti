@@ -1,5 +1,6 @@
 /** Generates the self-contained approval HTML page. Dark theme, no frameworks. */
 import type { ActionCard, Quiz, Tier } from '../types.js';
+import { diffLineKinds } from '../agents/challenges.js';
 
 const TIER_META: Record<Tier, { label: string; color: string }> = {
   0: { label: 'AUTO', color: 'var(--green)' },
@@ -13,14 +14,13 @@ function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-/** Render a diff as color-coded, line-numbered HTML. */
+/** Render a diff as color-coded, line-numbered HTML. Colours come from the classifier the challenges use. */
 function renderDiff(diff: string, pickable = false): string {
+  const kinds = diffLineKinds(diff);
   return diff.split('\n').map((line, i) => {
-    let cls = 'ln';
-    if (line.startsWith('+') && !line.startsWith('+++')) cls = 'ln add';
-    else if (line.startsWith('-') && !line.startsWith('---')) cls = 'ln del';
-    else if (line.startsWith('@@')) cls = 'ln hunk';
-    if (pickable) return `<div class="${cls} pick" data-n="${i + 1}" role="button" tabindex="0"><span class="num">${i + 1}</span><span class="code">${esc(line) || ' '}</span></div>`;
+    const k = kinds[i];
+    const cls = k === 'add' || k === 'del' || k === 'hunk' ? `ln ${k}` : 'ln';
+    if (pickable) return `<div class="${cls} pick" data-n="${i + 1}" role="button" tabindex="0" aria-pressed="false" aria-label="Line ${i + 1}: ${esc(line) || 'blank'}"><span class="num">${i + 1}</span><span class="code">${esc(line) || ' '}</span></div>`;
     return `<div class="${cls}"><span class="num">${i + 1}</span><span class="code">${esc(line) || ' '}</span></div>`;
   }).join('');
 }
@@ -38,20 +38,20 @@ const KIND_LABEL: Record<NonNullable<Quiz['kind']>, string> = {
 function renderChallenge(quiz: Quiz): string {
   switch (quiz.kind ?? 'quiz') {
     case 'spot-line':
-      return '<div class="hint">Click the line in the diff above. <span id="pickedline">No line selected.</span></div>';
+      return '<div class="hint">Click the line in the diff above. <span id="pickedline" role="status" aria-live="polite">No line selected.</span> Keyboard: Tab to a line, then Enter or Space.</div>';
     case 'type-in':
       return '<input id="answer" class="ans" autocomplete="off" spellcheck="false" placeholder="Type it exactly as in the diff"><div class="hint">No options to pick from: you need to have read it.</div>';
     case 'count':
       return '<input id="answer" class="ans" type="number" min="0" step="1" inputmode="numeric" placeholder="Number of lines">';
     case 'explain':
-      return '<textarea id="answer" class="ans" maxlength="600" placeholder="This change ..."></textarea><div class="hint"><span id="wc">0 / 6 words</span> · Saved in the receipt as your review note.</div>';
+      return '<textarea id="answer" class="ans" maxlength="600" placeholder="This change ..."></textarea><div class="hint"><span id="wc" aria-live="polite">0 / 6 words</span> · Saved in the receipt as your review note.</div>';
     case 'canary':
-      return `<div class="canary">${esc(quiz.subject ?? '')}</div>`
-        + `<label class="opt"><input type="radio" name="quiz" value="yes"><span>${esc(quiz.options[0] ?? 'Yes')}</span></label>`
-        + `<label class="opt"><input type="radio" name="quiz" value="no"><span>${esc(quiz.options[1] ?? 'No')}</span></label>`;
+      return `<div class="canary" id="canaryline">${esc(quiz.subject ?? '')}</div>`
+        + `<div role="radiogroup" aria-labelledby="quizq canaryline"><label class="opt"><input type="radio" name="quiz" value="yes"><span>${esc(quiz.options[0] ?? 'Yes')}</span></label>`
+        + `<label class="opt"><input type="radio" name="quiz" value="no"><span>${esc(quiz.options[1] ?? 'No')}</span></label></div>`;
     default:
-      return quiz.options.map(opt =>
-        `<label class="opt"><input type="radio" name="quiz" value="${esc(opt)}"><span>${esc(opt)}</span></label>`).join('');
+      return '<div role="radiogroup" aria-labelledby="quizq">' + quiz.options.map(opt =>
+        `<label class="opt"><input type="radio" name="quiz" value="${esc(opt)}"><span>${esc(opt)}</span></label>`).join('') + '</div>';
   }
 }
 
@@ -125,6 +125,8 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .ans{width:100%;padding:10px;background:#0a0d12;border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-mono);font-size:14px}
 textarea.ans{font-family:var(--font-sans);min-height:84px;resize:vertical}
 .hint{font-size:12px;color:var(--text-muted);margin-top:6px}
+button:focus-visible,input:focus-visible,textarea:focus-visible,.ln.pick:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.opt:focus-within{border-color:var(--blue);box-shadow:0 0 0 1px var(--blue)}
 </style></head>
 <body><div class="wrap">
 <h1 style="display:flex;align-items:center;gap:12px"><img src="/brand/litti-logo.svg" alt="Litti" height="30" style="display:block;height:30px;width:auto"><span>· COUNTERSIGN</span></h1>
@@ -134,7 +136,7 @@ textarea.ans{font-family:var(--font-sans);min-height:84px;resize:vertical}
   <div class="row">
     <span class="badge" style="background:${meta.color}">TIER ${tier} · ${meta.label}</span>
     <span>${esc(card.action.toUpperCase())}</span>
-    <span class="timer" id="timer">0.0s on page</span><span class="timer" style="margin-left:10px;opacity:.7">min review ${tier >= 2 ? 30 : 10}s</span>
+    <span class="timer" id="timer">0.0s on page</span><span class="timer" style="margin-left:10px">min review ${tier >= 2 ? 30 : 10}s</span>
   </div>
   <div class="meta">${esc(card.description)}</div>
   <div class="meta">Approvers: <strong>${approvalsSoFar}/${requiredApprovers}</strong> · Paths: ${card.touchedPaths.map(esc).join(', ')} · Reversible: ${card.reversible ? 'yes' : 'no'}</div>
@@ -143,12 +145,14 @@ textarea.ans{font-family:var(--font-sans);min-height:84px;resize:vertical}
 
 <div class="card">
   <div class="diff" id="diff">${renderDiff(card.diff, kind === 'spot-line')}<div id="sentinel"></div></div>
-  ${lineCount > 20 ? '<div class="scrollnote" id="scrollnote">↓ Scroll to the end of the diff to enable approval.</div>' : ''}
+  ${lineCount > 20 ? '<div class="scrollnote" id="scrollnote" role="status" aria-live="polite">↓ Scroll to the end of the diff to enable approval.</div>' : ''}
 </div>
 
 <div class="card challenge">
   <div class="kind">${esc(KIND_LABEL[kind])}</div>
-  <div class="q" id="quizq">${esc(quiz.question)}</div>
+  ${kind === 'type-in' || kind === 'count' || kind === 'explain'
+    ? `<label class="q" id="quizq" for="answer">${esc(quiz.question)}</label>`
+    : `<div class="q" id="quizq">${esc(quiz.question)}</div>`}
   ${challengeHtml}
 </div>
 
@@ -161,7 +165,7 @@ textarea.ans{font-family:var(--font-sans);min-height:84px;resize:vertical}
   <input type="hidden" id="ticket" value="${esc(ticket)}">
   <div class="chkrow"><input type="checkbox" id="reviewed"><label for="reviewed">I have reviewed this change.</label></div>
   <button id="submit" disabled>Countersign</button>
-  <div id="result"></div>
+  <div id="result" role="status" aria-live="polite"></div>
 </div>
 </div>
 <script>
@@ -196,7 +200,7 @@ reviewed.addEventListener('change',refresh);
 document.querySelectorAll('input[name=quiz]').forEach(r=>r.addEventListener('change',refresh));
 const ansEl=document.getElementById('answer');if(ansEl)ansEl.addEventListener('input',refresh);
 if(kind==='spot-line'){
-  const pickLine=(el)=>{document.querySelectorAll('.ln.picked').forEach(x=>x.classList.remove('picked'));el.classList.add('picked');picked=el.dataset.n;const p=document.getElementById('pickedline');if(p)p.textContent='Selected line '+picked;refresh();};
+  const pickLine=(el)=>{document.querySelectorAll('.ln.picked').forEach(x=>x.classList.remove('picked'));document.querySelectorAll('.ln.pick[aria-pressed=true]').forEach(x=>x.setAttribute('aria-pressed','false'));el.classList.add('picked');el.setAttribute('aria-pressed','true');picked=el.dataset.n;const p=document.getElementById('pickedline');if(p)p.textContent='Selected line '+picked;refresh();};
   document.querySelectorAll('.ln.pick').forEach(el=>{el.addEventListener('click',()=>pickLine(el));el.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();pickLine(el);}});});
 }
 

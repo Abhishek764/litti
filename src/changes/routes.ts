@@ -29,6 +29,14 @@ export interface ChangesDeps {
 
 type Who = { role: 'agent'; name: string } | { role: 'human'; name: string } | null;
 
+/** USER-9: name the folder and say how to fix it, in terms of what the user actually did. */
+export function notARepoMessage(env = process.env): string {
+  const folder = repoPath(env);
+  return env.LITTI_REPO_PATH
+    ? `LITTI_REPO_PATH points to ${folder}, which isn't a git repository. Point it at your project folder (in ~/.litti/config.env) and restart Litti.`
+    : `Litti was started in ${folder}, which isn't a git repository. Stop Litti and start \`litti\` from your project folder, or set LITTI_REPO_PATH in ~/.litti/config.env.`;
+}
+
 export function registerChangesRoutes(app: FastifyInstance, deps: ChangesDeps): void {
   const agentKeySet = () => Boolean(process.env.LITTI_API_KEY);
 
@@ -63,7 +71,10 @@ export function registerChangesRoutes(app: FastifyInstance, deps: ChangesDeps): 
       const c = await readChanges();
       return { ok: true, ...c, files: c.files.map(f => ({ ...f })) };
     } catch (err) {
-      return reply.code(500).send({ ok: false, message: (err as Error).message.startsWith('Not a git repository') ? `LITTI_REPO_PATH is not a git repository (${repoPath()}).` : 'Could not read changes.' });
+      if ((err as Error).message.startsWith('Not a git repository')) {
+        return reply.code(409).send({ ok: false, code: 'not-a-repo', folder: repoPath(), message: notARepoMessage() });
+      }
+      return reply.code(500).send({ ok: false, message: 'Could not read changes.' });
     }
   });
 
@@ -100,7 +111,10 @@ export function registerChangesRoutes(app: FastifyInstance, deps: ChangesDeps): 
     const w = who(req.headers, true);
     if (!w) return denied(reply);
     let c;
-    try { c = await readChanges(); } catch { return reply.code(500).send({ ok: false, message: 'Could not read changes.' }); }
+    try { c = await readChanges(); } catch (err) {
+      if ((err as Error).message.startsWith('Not a git repository')) return reply.code(409).send({ ok: false, code: 'not-a-repo', folder: repoPath(), message: notARepoMessage() });
+      return reply.code(500).send({ ok: false, message: 'Could not read changes.' });
+    }
     if (!c.files.length) return reply.code(409).send({ ok: false, message: 'Nothing changed — no diff to review.' });
     if (c.truncated) return reply.code(413).send({ ok: false, message: 'The change is too large to review in one go (512 KB). Split it.' });
     const open = listThreads({ status: 'open' }).length;

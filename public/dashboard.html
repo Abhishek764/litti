@@ -3,32 +3,27 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Litti — Receipt Chain</title><link rel="icon" href="/favicon.ico" sizes="48x48"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="manifest" href="/site.webmanifest"><meta name="theme-color" content="#0A0D12">
+<title>Litti — Receipt Chain</title><link rel="icon" href="/favicon.ico" sizes="48x48"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="manifest" href="/site.webmanifest"><meta name="theme-color" content="#121212">
 <style>
-:root{
-  --bg:#0d1117;--surface:#161b22;--border:#30363d;--text:#e6edf3;--text-muted:#8b949e;
-  --green:#3fb950;--red:#f85149;--yellow:#d29922;--orange:#db6d28;--blue:#58a6ff;
-  --font-mono:'SF Mono','Cascadia Code','Fira Code',monospace;
-  --font-sans:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
-}
+@font-face{font-family:"Albert Sans";font-style:normal;font-weight:400;font-display:swap;src:url("/fonts/albert-sans-400.woff2") format("woff2")}@font-face{font-family:"Albert Sans";font-style:normal;font-weight:500;font-display:swap;src:url("/fonts/albert-sans-500.woff2") format("woff2")}@font-face{font-family:"Albert Sans";font-style:normal;font-weight:600;font-display:swap;src:url("/fonts/albert-sans-600.woff2") format("woff2")}:root{--canvas:#121212;--canvas-2:#1a1a1a;--raised:#262626;--line:#2e2e2e;--line-hover:#5c5c5c;--ink:#fafafa;--ink-mute:#c7c7c7;--ink-faint:#a3a3a3;--ink-dim:#8c8c8c;--accent:#63fe13;--accent-ink:#121212;--accent-soft:rgba(99,254,19,.12);--cream:#fdfff7;--cream-line:#dfe3d5;--cream-ink:#121212;--ok:#63fe13;--bad:#ff6b5e;--warn:#ffd65c;--hot:#ff9f43;--r-sm:12px;--r-md:16px;--r-lg:26px;--r-pill:999px;--shadow:0 24px 48px -28px rgba(0,0,0,.55);--shadow-card:0 30px 60px -30px rgba(38,38,38,.4);--ease:.16s ease;--sans:"Albert Sans",Albert,Arial,system-ui,sans-serif;--mono:"SF Mono","Cascadia Code","Fira Code",Consolas,monospace;--bg:var(--canvas);--surface:var(--canvas-2);--border:var(--line);--text:var(--ink);--text-muted:var(--ink-faint);--green:var(--ok);--red:var(--bad);--yellow:var(--warn);--orange:var(--hot);--blue:var(--accent);--font-mono:var(--mono);--font-sans:var(--sans);}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font-sans);line-height:1.5}
 .wrap{max-width:960px;margin:0 auto;padding:32px 20px 80px}
 h1{font-size:24px;margin:0 0 2px;letter-spacing:.5px}
 .sub{color:var(--text-muted);font-size:14px;margin-bottom:24px}
 .toolbar{display:flex;gap:12px;align-items:center;margin-bottom:24px;flex-wrap:wrap}
-button{background:var(--blue);color:#06101f;border:0;border-radius:8px;padding:12px 22px;font-size:15px;font-weight:700;cursor:pointer;transition:transform .08s}
+button{background:var(--blue);color:var(--accent-ink);border:0;border-radius:var(--r-md);padding:12px 22px;font-size:15px;font-weight:700;cursor:pointer;transition:transform .08s}
 button:active{transform:scale(.97)}
 button.danger{background:transparent;color:var(--red);border:1px solid var(--red);font-size:12px;padding:8px 14px}
 .grid{display:grid;grid-template-columns:1fr 300px;gap:20px}
 @media(max-width:760px){.grid{grid-template-columns:1fr}}
-.card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:14px;position:relative}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);padding:16px;margin-bottom:14px;position:relative}
 .rowtop{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.badge{display:inline-block;padding:3px 10px;border-radius:6px;font-weight:700;font-size:11px;color:#0d1117;letter-spacing:1px}
+.badge{display:inline-block;padding:3px 10px;border-radius:var(--r-sm);font-weight:700;font-size:11px;color:var(--canvas);letter-spacing:1px}
 .outcome{font-size:12px;font-weight:700;letter-spacing:.5px}
 .hash{font-family:var(--font-mono);font-size:11px;color:var(--text-muted);margin-top:8px;word-break:break-all}
 .desc{margin:8px 0 4px;font-size:14px}
-.bar{height:8px;border-radius:4px;background:#0a0d12;overflow:hidden;margin-top:10px}
+.bar{height:8px;border-radius:var(--r-sm);background:var(--canvas);overflow:hidden;margin-top:10px}
 .bar > i{display:block;height:100%;transition:width .4s}
 .barlabel{font-size:11px;color:var(--text-muted);margin-top:4px}
 .check{position:absolute;right:14px;top:14px;font-size:20px;opacity:0;transition:opacity .2s}
@@ -43,7 +38,7 @@ button.retry{background:transparent;color:var(--orange);border:1px solid var(--o
 button:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
 .retrymsg{font-size:12px;margin-top:6px}
 .card.muted{opacity:.6}
-</style>
+html{-webkit-text-size-adjust:100%}body{background:var(--canvas);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased}h1{font-weight:500;letter-spacing:-1px}h2{font-weight:600;letter-spacing:-.6px}a{transition:color var(--ease),opacity var(--ease)}button,.btn{font-family:var(--sans);border-radius:var(--r-pill);transition:background var(--ease),color var(--ease),border-color var(--ease),opacity var(--ease),transform var(--ease)}button:not(:disabled):active,.btn:active{transform:translateY(1px)}:focus-visible{outline:2px solid var(--accent);outline-offset:2px}::selection{background:var(--accent);color:var(--accent-ink)}@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}</style>
 </head>
 <body>
 <div class="wrap">

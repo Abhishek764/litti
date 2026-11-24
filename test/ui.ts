@@ -183,10 +183,12 @@ function contrast(a: string, b: string): number {
 
 await step('tier badges: dark text on every tier colour meets WCAG AA (4.5:1) on the review page and inbox', () => {
   const page = reviewPage('quiz');
-  const vars = Object.fromEntries([...page.matchAll(/--(green|yellow|orange|red):(#[0-9a-f]{6})/g)].map(m => [m[1], m[2]]));
-  for (const c of ['green', 'yellow', 'orange', 'red']) assert.ok(contrast('#0d1117', vars[c]) >= 4.5, `review ${c} ${vars[c]}`);
+  // Tier colours come from the shared theme tokens (--ok/--warn/--hot/--bad) on the #121212 canvas.
+  const vars = Object.fromEntries([...page.matchAll(/--(ok|warn|hot|bad|canvas):(#[0-9a-f]{6})/g)].map(m => [m[1], m[2]]));
+  assert.match(page, /--green:var\(--ok\);--red:var\(--bad\);--yellow:var\(--warn\);--orange:var\(--hot\)/);
+  for (const c of ['ok', 'warn', 'hot', 'bad']) assert.ok(contrast(vars.canvas, vars[c]) >= 4.5, `review ${c} ${vars[c]}`);
   const inbox = renderInbox([], 'http://127.0.0.1:3882');
-  for (const m of inbox.matchAll(/\.t\d \{ background:(#[0-9a-f]{6}) \}/g)) assert.ok(contrast('#0a0d12', m[1]) >= 4.5, `inbox ${m[1]}`);
+  for (const m of inbox.matchAll(/\.t\d \{ background:(#[0-9a-f]{6}) \}/g)) assert.ok(contrast('#121212', m[1]) >= 4.5, `inbox ${m[1]}`);
   assert.equal([...inbox.matchAll(/\.t\d \{ background:/g)].length, 4);
   assert.match(inbox, /:focus-visible/);
   assert.match(inbox, /<nav aria-label="Main"/);

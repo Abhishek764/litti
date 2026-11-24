@@ -4,43 +4,43 @@
  * Plain HTML + inline JS. Dynamic text goes through textContent.
  * NOTE: this script sits in a template string — avoid backslashes in it.
  */
+import { fontFaces, THEME_TOKENS, THEME_BASE } from '../ui/theme.js';
 export function renderIntegrationsPage(): string {
   return `<!doctype html><html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Litti — Integrations</title><link rel="icon" href="/favicon.svg" type="image/svg+xml"><meta name="theme-color" content="#0A0D12">
+<title>Litti — Integrations</title><link rel="icon" href="/favicon.svg" type="image/svg+xml"><meta name="theme-color" content="#121212">
 <style>
-:root{--bg:#0d1117;--surface:#161b22;--raised:#1c2230;--border:#30363d;--text:#e6edf3;--muted:#8b949e;--green:#3fb950;--red:#f85149;--yellow:#d29922;--blue:#58a6ff;--brass:#F5B942;
---mono:'SF Mono','Cascadia Code',Consolas,monospace;--sans:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+${fontFaces()}:root{${THEME_TOKENS}--bg:var(--canvas);--surface:var(--canvas-2);--raised:var(--raised);--border:var(--line);--text:var(--ink);--muted:var(--ink-faint);--green:var(--ok);--red:var(--bad);--yellow:var(--warn);--blue:var(--accent);--brass:var(--accent);}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15px;line-height:1.5}
-header{display:flex;align-items:center;gap:16px;padding:14px 24px;border-bottom:1px solid var(--border);background:#0a0d12;flex-wrap:wrap}
+header{display:flex;align-items:center;gap:16px;padding:14px 24px;border-bottom:1px solid var(--border);background:var(--canvas);flex-wrap:wrap}
 header img{height:28px;display:block}header nav a{color:var(--muted);text-decoration:none;margin-right:14px;font-size:14px}header nav a:hover{color:var(--text)}
 .wrap{max-width:860px;margin:0 auto;padding:28px 16px 80px}
 h1{font-size:22px;margin:0 0 6px}.sub{color:var(--muted);margin:0 0 24px}
-.banner{border-radius:8px;padding:12px 16px;margin-bottom:18px;display:none}.banner.ok{background:#12331f;border:1px solid var(--green)}.banner.bad{background:#3a1a1a;border:1px solid var(--red)}
-.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:18px}
-.top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.logo{width:36px;height:36px;border-radius:8px;display:grid;place-items:center;font-weight:800;font-size:18px}
+.banner{border-radius:var(--r-md);padding:12px 16px;margin-bottom:18px;display:none}.banner.ok{background:#12331f;border:1px solid var(--green)}.banner.bad{background:#3a1a1a;border:1px solid var(--red)}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);padding:20px;margin-bottom:18px}
+.top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.logo{width:36px;height:36px;border-radius:var(--r-md);display:grid;place-items:center;font-weight:800;font-size:18px}
 .top h2{margin:0;font-size:18px;flex:1}.pill{font-size:12px;font-weight:700;border-radius:999px;padding:3px 10px}
 .pill.on{background:#12331f;color:var(--green)}.pill.off{background:var(--raised);color:var(--muted)}
 .what{color:var(--muted);font-size:14px;margin:8px 0 14px}
-button,.btn{font:inherit;font-size:14px;cursor:pointer;border-radius:8px;border:1px solid var(--border);background:var(--raised);color:var(--text);padding:8px 14px;text-decoration:none;display:inline-block}
-button.primary,.btn.primary{background:var(--brass);border-color:var(--brass);color:#0a0d12;font-weight:700}
+button,.btn{font:inherit;font-size:14px;cursor:pointer;border-radius:var(--r-md);border:1px solid var(--border);background:var(--raised);color:var(--text);padding:8px 14px;text-decoration:none;display:inline-block}
+button.primary,.btn.primary{background:var(--brass);border-color:var(--brass);color:var(--canvas);font-weight:700}
 button.danger{color:var(--red)}button:disabled{opacity:.5;cursor:not-allowed}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
-input,select{font:inherit;font-size:14px;background:#0a0d12;color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px 10px;min-width:0;flex:1}
-details{border:1px solid var(--border);border-radius:10px;margin-top:12px;background:var(--bg)}
+input,select{font:inherit;font-size:14px;background:var(--canvas);color:var(--text);border:1px solid var(--border);border-radius:var(--r-md);padding:8px 10px;min-width:0;flex:1}
+details{border:1px solid var(--border);border-radius:var(--r-md);margin-top:12px;background:var(--bg)}
 summary{cursor:pointer;padding:12px 14px;font-weight:600}summary .tag{font-weight:400;color:var(--muted);font-size:13px;margin-left:6px}
 .steps{padding:0 14px 14px}.steps ol{margin:0;padding-left:20px}.steps li{margin:8px 0}
-code,.copy{font-family:var(--mono);font-size:13px}.copy{display:inline-flex;align-items:center;gap:6px;background:#0a0d12;border:1px solid var(--border);border-radius:6px;padding:3px 4px 3px 8px;max-width:100%;overflow:hidden}
+code,.copy{font-family:var(--mono);font-size:13px}.copy{display:inline-flex;align-items:center;gap:6px;background:var(--canvas);border:1px solid var(--border);border-radius:var(--r-sm);padding:3px 4px 3px 8px;max-width:100%;overflow:hidden}
 .copy span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.copy button{padding:2px 8px;font-size:12px}
 .facts{font-size:14px;color:var(--muted);margin-top:6px}.facts b{color:var(--text);font-weight:600}
 .msg{font-size:14px;margin-top:8px;min-height:1px}.msg.ok{color:var(--green)}.msg.bad{color:var(--red)}
 .warn{color:var(--yellow);font-size:13px;margin-top:8px}
 .big{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:6px 0 4px}
-.bigbtn{font-size:16px;padding:12px 22px;border-radius:10px}
+.bigbtn{font-size:16px;padding:12px 22px;border-radius:var(--r-md)}
 details.more{border:0;background:none;margin-top:14px}details.more>summary{color:var(--muted);font-weight:500;font-size:14px;padding:6px 0}
 details.more details{margin-top:10px}
 a{color:var(--blue)}
-</style></head><body>
+${THEME_BASE}</style></head><body>
 <header><a href="/"><img src="/brand/litti-logo.svg" alt="Litti"></a><nav><a href="/">Inbox</a><a href="/changes">Changes</a><a href="/integrations" style="color:var(--text)">Integrations</a><a href="/dashboard.html">Dashboard</a><a href="/docs">Docs</a></nav></header>
 <div class="wrap">
 <h1>Integrations</h1>

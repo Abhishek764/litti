@@ -1,4 +1,5 @@
 /** Review inbox: the list of actions waiting for reviewers. Plain HTML, no framework. */
+import { fontFaces, THEME_TOKENS, THEME_BASE } from '../ui/theme.js';
 import type { PendingAction } from '../types.js';
 
 const esc = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
@@ -29,32 +30,34 @@ export function renderInbox(all: PendingAction[], baseUrl: string, now = Date.no
 
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Litti · Review inbox</title><link rel="icon" href="/favicon.ico" sizes="48x48"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="manifest" href="/site.webmanifest"><meta name="theme-color" content="#0A0D12">
+<title>Litti · Review inbox</title><link rel="icon" href="/favicon.ico" sizes="48x48"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="manifest" href="/site.webmanifest"><meta name="theme-color" content="#121212">
 <style>
-  :root { --bg:#0a0d12; --card:#121720; --border:#232b38; --text:#e6edf3; --muted:#8b97a8; --accent:#f5b942; }
+  ${fontFaces()}:root{${THEME_TOKENS}--bg:var(--canvas);--card:var(--canvas-2);--border:var(--line);--text:var(--ink);--muted:var(--ink-faint);}
   * { box-sizing:border-box } body { margin:0; background:var(--bg); color:var(--text); font:15px/1.5 system-ui,sans-serif }
   main { max-width:860px; margin:0 auto; padding:32px 16px }
   h1 { margin:0 0 4px; font-size:24px } p.sub { color:var(--muted); margin:0 0 24px }
-  nav a { color:var(--accent); margin-right:16px; text-decoration:none }
+  nav a { color:var(--ink-mute); margin-right:16px; text-decoration:none; font-weight:500 } nav a:hover { color:var(--ink) }
+  h1 { font-size:36px !important; letter-spacing:-1.2px }
   .row { display:flex; gap:16px; align-items:center; padding:14px 16px; background:var(--card); border:1px solid var(--border);
-         border-radius:10px; margin-bottom:10px; color:inherit; text-decoration:none }
-  .row:hover { border-color:var(--accent) }
-  .tier { white-space:nowrap; font-weight:700; font-size:12px; letter-spacing:.3px; padding:3px 10px; border-radius:6px; color:#0a0d12; min-width:120px; text-align:center }
+         border-radius:var(--r-md); margin-bottom:10px; color:inherit; text-decoration:none }
+  .row { transition:border-color var(--ease),transform var(--ease); box-shadow:var(--shadow) }
+  .row:hover { border-color:var(--line-hover) }
+  .tier { white-space:nowrap; font-weight:700; font-size:12px; letter-spacing:.3px; padding:4px 12px; border-radius:var(--r-pill); color:var(--canvas); min-width:120px; text-align:center }
   .t0 { background:#3fb950 } .t1 { background:#e3b341 } .t2 { background:#f0883e } .t3 { background:#ff7b72 }
   ul.list { list-style:none; margin:0; padding:0 }
   a:focus-visible, .row:focus-visible { outline:2px solid var(--accent); outline-offset:2px }
   .more { color:var(--muted); font-size:14px; margin-top:16px } .more a { color:var(--accent) } .desc { flex:1; min-width:0 } small { color:var(--muted) }
   .prog { font-family:ui-monospace,monospace; color:var(--muted) }
-  .empty { padding:40px; text-align:center; color:var(--muted); border:1px dashed var(--border); border-radius:10px }
-  .welcome { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:22px 24px; margin-top:8px }
+  .empty { padding:40px; text-align:center; color:var(--muted); border:1px dashed var(--border); border-radius:var(--r-md) }
+  .welcome { background:var(--card); border:1px solid var(--border); border-radius:var(--r-md); padding:22px 24px; margin-top:8px }
   .welcome h2 { margin:0 0 4px; font-size:18px } .welcome > p { color:var(--muted); margin:0 0 16px }
   .steps { display:grid; gap:12px; counter-reset:s }
   .step { display:grid; grid-template-columns:32px 1fr; gap:12px; align-items:start; counter-increment:s }
-  .step::before { content:counter(s); width:28px; height:28px; border-radius:50%; background:var(--accent); color:#0a0d12; font-weight:800; display:grid; place-items:center }
+  .step::before { content:counter(s); width:28px; height:28px; border-radius:50%; background:var(--accent); color:var(--canvas); font-weight:800; display:grid; place-items:center }
   .step b { display:block } .step span { color:var(--muted); font-size:14px }
-  .step code { font-family:ui-monospace,monospace; background:#0a0d12; border:1px solid var(--border); border-radius:6px; padding:2px 7px; color:var(--text); font-size:13px }
+  .step code { font-family:ui-monospace,monospace; background:var(--canvas); border:1px solid var(--border); border-radius:var(--r-sm); padding:2px 7px; color:var(--text); font-size:13px }
   .step a { color:var(--accent) }
-</style></head>
+${THEME_BASE}</style></head>
 <body><main>
   <nav aria-label="Main" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><a href="/" style="margin-right:20px"><img src="/brand/litti-logo.svg" alt="Litti" height="30" style="display:block;height:30px;width:auto"></a><a href="/">Inbox</a><a href="/changes">Changes</a><a href="/integrations">Integrations</a><a href="/dashboard.html">Dashboard</a><a href="/docs">Docs</a></nav>
   <h1 style="margin-top:24px">Waiting for review</h1>

@@ -1,4 +1,5 @@
 /** Generates the self-contained approval HTML page. Dark theme, no frameworks. */
+import { fontFaces, THEME_TOKENS, THEME_BASE } from '../ui/theme.js';
 import type { ActionCard, Quiz, Tier } from '../types.js';
 import { diffLineKinds } from '../agents/challenges.js';
 
@@ -81,36 +82,31 @@ export function renderApprovalPage(args: {
 
   return `<!doctype html><html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Litti — Countersign</title><link rel="icon" href="/favicon.ico" sizes="48x48"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="manifest" href="/site.webmanifest"><meta name="theme-color" content="#0A0D12">
+<title>Litti — Countersign</title><link rel="icon" href="/favicon.ico" sizes="48x48"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="manifest" href="/site.webmanifest"><meta name="theme-color" content="#121212">
 <style>
-:root{
-  --bg:#0d1117;--surface:#161b22;--border:#30363d;--text:#e6edf3;--text-muted:#8b949e;
-  --green:#3fb950;--red:#f85149;--yellow:#d29922;--orange:#db6d28;--blue:#58a6ff;
-  --font-mono:'SF Mono','Cascadia Code','Fira Code',monospace;
-  --font-sans:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
-}
+${fontFaces()}:root{${THEME_TOKENS}--bg:var(--canvas);--surface:var(--canvas-2);--border:var(--line);--text:var(--ink);--text-muted:var(--ink-faint);--green:var(--ok);--red:var(--bad);--yellow:var(--warn);--orange:var(--hot);--blue:var(--accent);--font-mono:var(--mono);--font-sans:var(--sans);}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font-sans);line-height:1.5}
 .wrap{max-width:860px;margin:0 auto;padding:32px 20px 80px}
 h1{font-size:20px;margin:0 0 4px;letter-spacing:.5px}
 .sub{color:var(--text-muted);font-size:13px;margin-bottom:24px}
-.card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:20px;margin-bottom:20px}
-.badge{display:inline-block;padding:4px 12px;border-radius:6px;font-weight:700;font-size:12px;color:#0d1117;letter-spacing:1px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);padding:20px;margin-bottom:20px}
+.badge{display:inline-block;padding:4px 12px;border-radius:var(--r-sm);font-weight:700;font-size:12px;color:var(--canvas);letter-spacing:1px}
 .row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .reasons{margin:12px 0 0;padding-left:18px;color:var(--text-muted);font-size:13px}
 .meta{color:var(--text-muted);font-size:13px;margin-top:8px}
-.diff{background:#0a0d12;border:1px solid var(--border);border-radius:8px;overflow:auto;font-family:var(--font-mono);font-size:13px;max-height:420px}
+.diff{background:var(--canvas);border:1px solid var(--border);border-radius:var(--r-md);overflow:auto;font-family:var(--font-mono);font-size:13px;max-height:420px}
 .ln{display:flex;white-space:pre}
 .ln .num{width:44px;text-align:right;padding:0 10px;color:var(--text-muted);user-select:none;flex:0 0 auto}
 .ln .code{padding:0 10px;flex:1}
 .ln.add{background:#12331f}.ln.add .code{color:#7ee2a8}
 .ln.del{background:#3a1a1a}.ln.del .code{color:#ff9b94}
-.ln.hunk{background:#10233f}.ln.hunk .code{color:var(--blue)}
-.opt{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:6px;margin-bottom:8px;cursor:pointer;font-family:var(--font-mono);font-size:13px}
+.ln.hunk{background:var(--accent-soft)}.ln.hunk .code{color:var(--blue)}
+.opt{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:var(--r-sm);margin-bottom:8px;cursor:pointer;font-family:var(--font-mono);font-size:13px}
 .opt:hover{border-color:var(--blue)}
 .chkrow{display:flex;align-items:center;gap:10px;margin:16px 0}
 .q{font-weight:600;display:block;margin-bottom:12px}
-button{background:var(--blue);color:#06101f;border:0;border-radius:8px;padding:12px 22px;font-size:15px;font-weight:700;cursor:pointer}
+button{background:var(--blue);color:var(--accent-ink);border:0;border-radius:var(--r-md);padding:12px 22px;font-size:15px;font-weight:700;cursor:pointer}
 button:disabled{opacity:.4;cursor:not-allowed}
 .idnote{font-size:12px;color:var(--text-muted);margin-top:6px}
 .idnote code{font-family:var(--font-mono);color:var(--blue)}
@@ -120,14 +116,14 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .scrollnote{color:var(--yellow);font-size:12px;margin-top:8px}
 .kind{display:inline-block;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--blue);border:1px solid var(--border);border-radius:999px;padding:2px 10px;margin-bottom:10px}
 .ln.pick{cursor:pointer}.ln.pick:hover{outline:1px solid var(--blue);outline-offset:-1px}
-.ln.picked{outline:2px solid var(--blue);outline-offset:-2px;background:#0f2a4a}
-.canary{font-family:var(--font-mono);font-size:13px;background:#0a0d12;border:1px dashed var(--yellow);border-radius:6px;padding:12px;margin-bottom:12px;white-space:pre-wrap;word-break:break-all}
-.ans{width:100%;padding:10px;background:#0a0d12;border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-mono);font-size:14px}
+.ln.picked{outline:2px solid var(--blue);outline-offset:-2px;background:var(--accent-soft)}
+.canary{font-family:var(--font-mono);font-size:13px;background:var(--canvas);border:1px dashed var(--yellow);border-radius:var(--r-sm);padding:12px;margin-bottom:12px;white-space:pre-wrap;word-break:break-all}
+.ans{width:100%;padding:10px;background:var(--canvas);border:1px solid var(--border);border-radius:var(--r-sm);color:var(--text);font-family:var(--font-mono);font-size:14px}
 textarea.ans{font-family:var(--font-sans);min-height:84px;resize:vertical}
 .hint{font-size:12px;color:var(--text-muted);margin-top:6px}
 button:focus-visible,input:focus-visible,textarea:focus-visible,.ln.pick:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
 .opt:focus-within{border-color:var(--blue);box-shadow:0 0 0 1px var(--blue)}
-</style></head>
+${THEME_BASE}</style></head>
 <body><div class="wrap">
 <h1 style="display:flex;align-items:center;gap:12px"><img src="/brand/litti-logo.svg" alt="Litti" height="30" style="display:block;height:30px;width:auto"><span>· COUNTERSIGN</span></h1>
 <div class="sub">Prove you read it. Your signature binds to this exact diff.</div>
@@ -159,7 +155,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,.ln.pick:focus-v
 <div class="card">
   <input type="hidden" id="actionId" value="${esc(card.id)}">
   <label class="q" for="approver">Approver</label>
-  <input id="approver" value="${esc(approver)}" ${identityLocked ? 'readonly' : ''} placeholder="${allowTyped ? 'Your name' : 'Open your personal review link'}" style="width:100%;padding:10px;background:#0a0d12;border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-mono)">
+  <input id="approver" value="${esc(approver)}" ${identityLocked ? 'readonly' : ''} placeholder="${allowTyped ? 'Your name' : 'Open your personal review link'}" style="width:100%;padding:10px;background:var(--canvas);border:1px solid var(--border);border-radius:var(--r-sm);color:var(--text);font-family:var(--font-mono)">
   <div class="idnote">${identityLocked ? '🔐 Verified reviewer' : allowTyped ? 'Demo mode: typed names accepted.' : '🔐 Get your personal review link: <code>litti review ' + esc(card.id) + ' --as &lt;you&gt;</code>'}</div>
   <input type="hidden" id="viewStamp" value="${esc(viewStamp)}">
   <input type="hidden" id="ticket" value="${esc(ticket)}">

@@ -49,7 +49,7 @@ export function buildSite(outDir: string, siteUrl = DEFAULT_SITE_URL): BuildResu
   write('404.html', renderDocsPage({ slug: 'index', title: 'Page not found', html: `<p>That page doesn’t exist. <a href="/docs">Back to the docs</a>.</p>`, headings: [], text: '' }, { base }));
 
   // Static assets the pages reference.
-  for (const f of ['favicon.svg', 'favicon.ico', 'apple-touch-icon.png', 'brand']) {
+  for (const f of ['favicon.svg', 'favicon.ico', 'apple-touch-icon.png', 'brand', 'fonts']) {
     cpSync(join(ROOT, 'public', f), join(outDir, f), { recursive: true });
     files.push(f);
   }

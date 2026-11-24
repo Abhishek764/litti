@@ -8,6 +8,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
 import { render, type Heading } from './markdown.js';
+import { fontFaces } from '../ui/theme.js';
 
 const GUIDE_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'docs', 'guide');
 const REPO = 'https://github.com/Abhishek764/litti';
@@ -101,43 +102,43 @@ export function renderDocsPage(page: Page, opts: RenderOptions = {}): string {
 <meta name="description" content="Litti documentation: ${esc(page.title)}">
 <link rel="icon" href="${abs('/favicon.svg')}" type="image/svg+xml">
 <style>
-:root{--bg:#f7f5f0;--surface:#fff;--border:#e4e0d6;--text:#1a1d23;--muted:#5f6670;--accent:#a8700a;--brass:#F5B942;--code:#f1eee6;--link:#8a5a00;
---mono:'SF Mono','Cascadia Code',Consolas,monospace;--sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,sans-serif}
-@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0a0d12;--surface:#11151c;--border:#262c36;--text:#e6edf3;--muted:#8b949e;--accent:#F5B942;--code:#161b22;--link:#F5B942}}
-:root[data-theme=dark]{--bg:#0a0d12;--surface:#11151c;--border:#262c36;--text:#e6edf3;--muted:#8b949e;--accent:#F5B942;--code:#161b22;--link:#F5B942}
+${fontFaces(abs('/').slice(0, -1))}:root{--bg:#fdfff7;--surface:#fff;--border:#dfe3d5;--text:#121212;--muted:#525252;--accent:#1a7300;--brass:#63fe13;--code:#f1f3eb;--link:#1a7300;
+--mono:'SF Mono','Cascadia Code',Consolas,monospace;--sans:"Albert Sans",Albert,Arial,system-ui,sans-serif;--ease:.16s ease}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#121212;--surface:#1a1a1a;--border:#2e2e2e;--text:#fafafa;--muted:#a3a3a3;--accent:#63fe13;--code:#1f1f1f;--link:#63fe13}}
+:root[data-theme=dark]{--bg:#121212;--surface:#1a1a1a;--border:#2e2e2e;--text:#fafafa;--muted:#a3a3a3;--accent:#63fe13;--code:#1f1f1f;--link:#63fe13}
 *{box-sizing:border-box}html{scroll-padding-top:72px}
 body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:16px;line-height:1.65}
 header{position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:16px;padding:10px 20px;background:var(--bg);border-bottom:1px solid var(--border)}
 header .brand{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--text);font-weight:700}
 header .brand img{height:24px}header .brand span{color:var(--muted);font-weight:500}
 .search{position:relative;flex:1;max-width:420px;margin-left:12px}
-.search input{width:100%;font:inherit;font-size:14px;padding:7px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text)}
-.results{position:absolute;top:40px;left:0;right:0;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,.18);display:none;max-height:60vh;overflow:auto}
+.search input{width:100%;font:inherit;font-size:14px;padding:7px 12px;border-radius:16px;border:1px solid var(--border);background:var(--surface);color:var(--text)}
+.results{position:absolute;top:40px;left:0;right:0;background:var(--surface);border:1px solid var(--border);border-radius:16px;box-shadow:0 12px 32px rgba(0,0,0,.18);display:none;max-height:60vh;overflow:auto}
 .results a{display:block;padding:8px 12px;text-decoration:none;color:var(--text);font-size:14px;border-bottom:1px solid var(--border)}
 .results a small{display:block;color:var(--muted)}.results a:hover,.results a.sel{background:var(--code)}
 header nav{margin-left:auto;display:flex;gap:16px;align-items:center;font-size:14px}
 header nav a{color:var(--muted);text-decoration:none}header nav a:hover{color:var(--text)}
-header button{font:inherit;font-size:13px;background:none;border:1px solid var(--border);color:var(--muted);border-radius:8px;padding:4px 8px;cursor:pointer}
+header button{font:inherit;font-size:13px;background:none;border:1px solid var(--border);color:var(--muted);border-radius:16px;padding:4px 8px;cursor:pointer}
 .layout{display:grid;grid-template-columns:250px minmax(0,1fr) 210px;gap:40px;max-width:1280px;margin:0 auto;padding:0 20px}
 aside.side{position:sticky;top:56px;align-self:start;max-height:calc(100vh - 56px);overflow:auto;padding:24px 0}
 .grp{margin-bottom:18px}.gt{font-size:12px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);margin:0 0 6px 10px}
-aside.side a{display:block;padding:5px 10px;border-radius:6px;color:var(--text);text-decoration:none;font-size:14.5px}
+aside.side a{display:block;padding:5px 10px;border-radius:12px;color:var(--text);text-decoration:none;font-size:14.5px}
 aside.side a:hover{background:var(--code)}aside.side a.on{background:var(--code);color:var(--accent);font-weight:600}
 main{padding:32px 0 80px;min-width:0}
 main h1{font-size:34px;line-height:1.2;margin:0 0 12px;letter-spacing:-.5px}
 main h2{font-size:23px;margin:40px 0 10px;padding-top:6px;letter-spacing:-.2px}main h3{font-size:18px;margin:28px 0 8px}main h4{font-size:16px;margin:22px 0 6px}
 .anchor{color:var(--muted);text-decoration:none;margin-left:-20px;width:20px;display:inline-block;opacity:0}h2:hover .anchor,h3:hover .anchor,h4:hover .anchor{opacity:1}
 main p,main li{color:var(--text)}main a{color:var(--link)}
-code{font-family:var(--mono);font-size:.88em;background:var(--code);padding:1px 5px;border-radius:4px}
-.code{position:relative;margin:14px 0}.code pre{margin:0;background:var(--code);border:1px solid var(--border);border-radius:10px;padding:14px 16px;overflow:auto;font-size:13.5px;line-height:1.55}
+code{font-family:var(--mono);font-size:.88em;background:var(--code);padding:1px 5px;border-radius:12px}
+.code{position:relative;margin:14px 0}.code pre{margin:0;background:var(--code);border:1px solid var(--border);border-radius:16px;padding:14px 16px;overflow:auto;font-size:13.5px;line-height:1.55}
 .code pre code{background:none;padding:0;font-size:inherit}
-.code .copy{position:absolute;top:8px;right:8px;font:inherit;font-size:12px;border:1px solid var(--border);background:var(--surface);color:var(--muted);border-radius:6px;padding:2px 8px;cursor:pointer;opacity:.0;transition:opacity .15s}
+.code .copy{position:absolute;top:8px;right:8px;font:inherit;font-size:12px;border:1px solid var(--border);background:var(--surface);color:var(--muted);border-radius:12px;padding:2px 8px;cursor:pointer;opacity:.0;transition:opacity .15s}
 .code:hover .copy,.code .copy:focus{opacity:1}
 .table{overflow-x:auto;margin:14px 0}table{border-collapse:collapse;width:100%;font-size:14.5px}
 th,td{border-bottom:1px solid var(--border);padding:8px 10px;text-align:left;vertical-align:top}th{font-weight:600;color:var(--muted);font-size:13px;text-transform:uppercase;letter-spacing:.4px}
 blockquote{margin:16px 0;padding:10px 16px;border-left:3px solid var(--brass);background:var(--code);border-radius:0 8px 8px 0}
 .pn{display:flex;gap:12px;margin-top:48px;border-top:1px solid var(--border);padding-top:20px}
-.pn a{flex:1;border:1px solid var(--border);border-radius:10px;padding:12px 16px;text-decoration:none;color:var(--text)}
+.pn a{flex:1;border:1px solid var(--border);border-radius:16px;padding:12px 16px;text-decoration:none;color:var(--text)}
 .pn a small{display:block;color:var(--muted);font-size:12px}.pn a.next{text-align:right}.pn a:hover{border-color:var(--accent)}
 .edit{font-size:13px;margin-top:20px;color:var(--muted)}.edit a{color:var(--muted)}
 aside.toc{position:sticky;top:56px;align-self:start;padding:32px 0;font-size:13px;max-height:calc(100vh - 56px);overflow:auto}

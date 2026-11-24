@@ -58,7 +58,7 @@ Jira needs a one-time app setup. It takes about two minutes, and the Integration
 5. Click **Connect Jira**, sign in, accept, and you're back.
 6. Pick the **project** for issues and how risky an action must be to get one (default: Tier 2 and up). Optionally name the status to move issues to when approved, such as `Done`. Click **Save**, then **Send test**.
 
-Each risky action becomes an issue labelled `litti` and `litti-tier-N`. Every review step is a comment. Litti keeps the Jira sign-in fresh by itself.
+Each action at or above that tier becomes an issue labelled `litti` and `litti-tier-N`. Every review step is a comment. Litti keeps the Jira sign-in fresh by itself.
 
 ## In production
 

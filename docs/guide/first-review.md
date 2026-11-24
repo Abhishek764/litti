@@ -23,7 +23,7 @@ Open the **CSS fix** (Tier 1).
 
 1. **Read the diff.** Long diffs have to be scrolled to the end before you can approve.
 2. **Answer the check.** It's built from the diff. You might get a multiple-choice question, be asked to click a line, or type a value. Each review picks a different kind.
-3. **Type your name** (the demo accepts typed names; a real setup uses your login).
+3. **Type your name.** This works in the demo only. With your real agent you're signed in as your OS user on your own machine, or through your login on a team server.
 4. Tick **I have reviewed this change** and click **Countersign**.
 
 Litti waits until at least 10 seconds have passed since you opened the page. That's on purpose.

@@ -52,6 +52,7 @@ If a command is denied with a message starting with `🔒 Litti`:
 2. Do not retry, rephrase, split the command, or reach the same result another way.
 3. Do not edit files while waiting: any change makes the approval invalid and starts a new review.
 4. When the user says it's approved, run exactly the same command again.
+5. Never review or approve anything yourself: don't run `litti review`, don't call `/review-link`, and don't read `~/.litti/config.env` or `LITTI_ADMIN_KEY`. The hook denies these, and trying is the kind of workaround the user installed Litti to prevent.
 
 ## Review notes
 

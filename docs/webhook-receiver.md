@@ -34,8 +34,8 @@ createServer((req, res) => {
     }
     const { action, token } = JSON.parse(raw);
 
-    // Optional belt-and-braces: ask Litti whether this exact diff is still approved.
-    const check = await fetch(`${process.env.LITTI_URL}/api/tokens/verify`, {
+    // Check this exact diff is the approved one, and use the token up so it can't ship twice.
+    const check = await fetch(`${process.env.LITTI_URL}/api/tokens/consume`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-litti-key': process.env.LITTI_API_KEY },
       body: JSON.stringify({ token, diff: action.diff }),
@@ -53,13 +53,13 @@ createServer((req, res) => {
 
 ## Verifying before you ship (no webhook)
 
-If your agent or pipeline deploys by itself, fetch the token and verify it against the diff you
-are about to apply:
+If your agent or pipeline deploys by itself, fetch the token and consume it against the diff you
+are about to apply (`/api/tokens/verify` is the same check without using the token up):
 
 ```bash
 TOKEN=$(curl -s -H "x-litti-key: $LITTI_API_KEY" "$LITTI_URL/api/actions/$ID" | jq .token)
-curl -s -X POST "$LITTI_URL/api/tokens/verify" \
+curl -s -X POST "$LITTI_URL/api/tokens/consume" \
   -H "content-type: application/json" -H "x-litti-key: $LITTI_API_KEY" \
   -d "{\"token\": $TOKEN, \"diff\": $(jq -Rs . < change.diff)}"
-# → { "valid": true, "reason": "Valid" }   or   { "valid": false, "reason": "Diff changed since approval — token is dead" }
+# → 200 { "valid": true, … }   or   409 { "valid": false, "reason": "…" } (other diff, not approved, or already used)
 ```

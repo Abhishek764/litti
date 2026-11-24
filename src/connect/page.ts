@@ -145,7 +145,7 @@ function card(p,s,info){
   if(s.connected){
     const d=s.details||{};const f=el('div','facts');
     const add=(k,v)=>{if(v){f.append(el('b','',k+': '),document.createTextNode(String(v)+'   '));}};
-    add('How',d.how);add('Workspace',d.team);add('Channel',d.channel?'#'+d.channel:null);add('Server',d.server);add('Site',d.site);add('Project',d.projectKey?(d.projectName||d.projectKey)+' ('+d.projectKey+')':null);
+    add('How',d.how);add('Workspace',d.team);add('Channel',d.channel?'#'+d.channel:null);add('Server',d.server);add('Webhook',d.webhook);add('Site',d.site);add('Project',d.projectKey?(d.projectName||d.projectKey)+' ('+d.projectKey+')':null);
     add('Connected by',d.connectedBy);c.append(f);
     if(p==='jira')jiraProjectPicker(s,c);
     const r=el('div','row');const t=el('button','','Send test');const x=el('button','danger','Disconnect');const m=msgLine();

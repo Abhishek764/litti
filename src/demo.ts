@@ -13,7 +13,7 @@ import { randomBytes } from 'node:crypto';
 import { createServer } from 'node:net';
 import open from 'open';
 import { initDb, enableDemoTamper } from './chain/db.js';
-import { buildServer, setNotifier, registerPending } from './approval/server.js';
+import { buildServer, setNotifier, registerPending, listenTextResolver } from './approval/server.js';
 import { multiNotifier, notifierFromEnv } from './notify/index.js';
 import { liveConnectedNotifier } from './connect/notifier.js';
 import { buildActionCard } from './agents/builder.js';
@@ -62,7 +62,7 @@ async function main() {
 
   const app = buildServer();
   try {
-    await app.listen({ port: PORT, host: '127.0.0.1' });
+    await app.listen({ port: PORT, host: '127.0.0.1', listenTextResolver });
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'EADDRINUSE') portBusy();
     throw err;

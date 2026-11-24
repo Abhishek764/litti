@@ -14,9 +14,7 @@ import type { ActionCard, ActionEvent, Notifier, RiskAssessment } from '../types
 import { slackNotifier } from './slack.js';
 import { discordNotifier, isDiscordWebhook } from './discord.js';
 import { jiraNotifier } from './jira.js';
-import { safeUrl } from './http.js';
-
-import { TIER_LABEL } from './http.js';
+import { TIER_LABEL, safeUrl } from './http.js';
 
 /** Human-readable approval card, shared by every notifier. */
 export function formatCard(card: ActionCard, a: RiskAssessment, approvalUrl: string): string {

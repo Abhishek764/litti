@@ -136,6 +136,8 @@ try {
         last = (await app.inject({ method: 'POST', url: `/approve/${first.id}/submit`, payload: { approver: who, quizAnswer: sampleAnswer(getPending(first.id)!), scrolledToBottom: true, viewStamp: issueViewStamp(first.id, Date.now() - 45000) } })).json();
       }
       assert.equal(last.ok, false, 'the reviewer sees the failure');
+      assert.match(last.message, /could not be reached/, 'in words, not "fetch failed"');
+      assert.doesNotMatch(last.message, /fetch failed/);
       assert.equal(getPending(first.id)!.status, 'deploy-failed');
       assert.equal(allReceipts().at(-1)!.outcome, 'deploy-failed', 'the chain does not claim a deploy that never happened');
       assert.equal((await gateCall()).decision, 'deny', 'the gate does not allow a failed deploy');
@@ -265,6 +267,24 @@ try {
     assert.equal(sym.options.length, 4);
     assert.ok(sym.options.includes('loadUser') && sym.options.includes('renderPage'));
     for (const d of ['+a', '+x: 1;\n-x: 2;', '-color: red;\n+color: blue;']) assert.equal(generateQuiz(card(d)).options.length, 4, d);
+  });
+
+  await step('FIELD-11 a newer gate request for the same command + repo supersedes the older pending one', async () => {
+    const gateReq = (diffLine: string, repo = '/work/app', command = 'git commit -m wip') => app.inject({ method: 'POST', url: '/api/gate', payload: {
+      agent: 'claude-code', action: 'edit', command, repo, description: 'commit', diff: `--- a/a.ts\n+++ b/a.ts\n@@ -1 +1 @@\n-a\n+${diffLine}`, touchedPaths: ['a.ts'] } }).then(r => r.json());
+    const one = await gateReq('first');
+    const other = await gateReq('other repo', '/work/other');
+    const otherCmd = await gateReq('other command', '/work/app', 'npm publish');
+    const two = await gateReq('second');
+    assert.notEqual(one.id, two.id);
+    assert.equal(getPending(one.id)!.status, 'superseded');
+    assert.equal(getPending(two.id)!.status, 'pending');
+    assert.equal(getPending(other.id)!.status, 'pending', 'another repository is untouched');
+    assert.equal(getPending(otherCmd.id)!.status, 'pending', 'another command is untouched');
+    const pending = (await app.inject({ url: '/api/pending' })).json().pending.map((p: { id: string }) => p.id);
+    assert.ok(!pending.includes(one.id) && pending.includes(two.id), 'superseded requests leave the inbox');
+    const late = await app.inject({ method: 'POST', url: `/approve/${one.id}/submit`, payload: { approver: 'ana', quizAnswer: 'x', scrolledToBottom: true, viewStamp: issueViewStamp(one.id, Date.now() - 45000) } });
+    assert.equal(late.statusCode, 409, 'a superseded review cannot be approved');
   });
 } finally { await app.close(); }
 

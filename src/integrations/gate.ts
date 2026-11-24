@@ -182,7 +182,7 @@ export async function gate(command: string, cwd: string, opts: GateOptions = {})
       body: JSON.stringify({
         agent, action: c.action, command,
         description: `${agent} wants to run: ${command.replace(/\s+/g, ' ').slice(0, 200)}${branch ? ` (on ${branch})` : ''}`,
-        diff, touchedPaths: paths, reversible: c.action === 'edit',
+        diff, repo: shipped.repo, touchedPaths: paths, reversible: c.action === 'edit',
         rollbackPlan: c.action === 'edit' ? 'git reset --soft HEAD~1' : '',
       }),
     });

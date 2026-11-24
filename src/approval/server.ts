@@ -21,7 +21,7 @@ import { execute } from '../deploy/executor.js';
 import { appendReceipt, attentionScore } from '../chain/receipt.js';
 import { verifyChain } from '../chain/verify.js';
 import {
-  insertPending, getPending, updatePending, allReceipts, corruptReceipt, demoMode, consumeOnce,
+  insertPending, getPending, updatePending, allReceipts, corruptReceipt, demoMode, consumeOnce, supersedeOlderGateActions,
   getSetting, setSetting, setApprovalToken, getApprovalToken, listPending, latestByDiffHash, isShipped, markShipped,
 } from '../chain/db.js';
 
@@ -130,7 +130,7 @@ async function deliverApproved(p: PendingAction, approvals: ApprovalSubmission[]
   appendReceipt({ actionCard: card, tier: p.tier, approvals, outcome: result.ok ? 'approved' : 'deploy-failed', attentionScore: attention });
   // A gate action (commit, push, rm -rf…) is run by the agent, not by Litti: say "approved".
   const message = result.ok ? (p.source === 'gate' ? '✅ Approved. Tell the agent to run the same command again; it will be allowed once.' : result.message)
-    :`${result.message}. Nothing ran. Fix the pipeline, then retry: POST /api/actions/${p.id}/retry (admin key).`;
+    :`${result.message}. Nothing was shipped and the agent stays blocked. Fix the pipeline, then ask an admin to retry this action (POST /api/actions/${p.id}/retry with the admin key).`;
   return { ok: result.ok, message, attention };
 }
 
@@ -482,6 +482,11 @@ export function buildServer(opts: { logger?: boolean } = {}): FastifyInstance {
     }
 
     const { id, url, tier } = registerPending(card, base, 'gate');
+    // Inbox hygiene (FIELD-11): an earlier, still-pending request for the same command in the same
+    // repository is replaced by this one; reviewing the old diff would approve nothing.
+    const command = typeof b.command === 'string' && b.command ? b.command : String(b.description);
+    const repoName = typeof (b as { repo?: unknown }).repo === 'string' ? String((b as { repo?: unknown }).repo) : '';
+    supersedeOlderGateActions(id, createHash('sha256').update(`${who.label ?? ''}\0${repoName}\0${command}`).digest('hex'));
     if (tier === 0) {
       const token = createToken(card.id, card.diffHash, []);
       setApprovalToken(id, token);

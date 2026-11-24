@@ -64,6 +64,7 @@ export function initDb(path = 'litti.db'): Database.Database {
   if (!cols.includes('approval_token')) db.exec('ALTER TABLE pending_actions ADD COLUMN approval_token TEXT');
   if (!cols.includes('challenge')) db.exec('ALTER TABLE pending_actions ADD COLUMN challenge TEXT');
   if (!cols.includes('source')) db.exec('ALTER TABLE pending_actions ADD COLUMN source TEXT');
+  if (!cols.includes('gate_key')) db.exec('ALTER TABLE pending_actions ADD COLUMN gate_key TEXT');
   const rcols = (db.prepare('PRAGMA table_info(receipts)').all() as { name: string }[]).map(c => c.name);
   if (!rcols.includes('format')) db.exec('ALTER TABLE receipts ADD COLUMN format INTEGER');
   return db;
@@ -251,6 +252,16 @@ export function isShipped(tokenId: string): boolean {
 export function markShipped(tokenId: string): boolean {
   return getDb().prepare('INSERT OR IGNORE INTO consumed_tokens (token_id, consumed_at) VALUES (?, ?)')
     .run(`ship:${tokenId}`, new Date().toISOString()).changes === 1;
+}
+
+/**
+ * Tag a gate action with its command+repository key and mark older pending gate actions with the
+ * same key as superseded (they drop out of the inbox and /api/pending). Returns how many.
+ */
+export function supersedeOlderGateActions(id: string, gateKey: string): number {
+  getDb().prepare('UPDATE pending_actions SET gate_key = ? WHERE id = ?').run(gateKey, id);
+  return getDb().prepare("UPDATE pending_actions SET status = 'superseded' WHERE gate_key = ? AND id != ? AND status = 'pending' AND source = 'gate'")
+    .run(gateKey, id).changes;
 }
 
 /** Use a one-time value (e.g. a review page's view stamp). False if it was used before. */

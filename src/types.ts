@@ -118,7 +118,8 @@ export interface PendingAction {
   quiz: Quiz;
   quizAnswer: string;
   /** deploy-failed: approved by reviewers, but the executor could not deliver it (retry it). */
-  status: 'pending' | 'approved' | 'rejected' | 'deploy-failed';
+  /** superseded: a newer gate request for the same command and repository replaced it. */
+  status: 'pending' | 'approved' | 'rejected' | 'deploy-failed' | 'superseded';
   createdAt: string;
   /** Who created it: the agent hook gate, the agent API, or the Changes page. Older rows: unknown. */
   source?: ActionSource;

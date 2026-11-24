@@ -1,6 +1,6 @@
 {
   "name": "litti",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Proof of review for AI coding agents: risk tiering, comprehension quizzes, rubber-stamp detection, diff-bound tokens, tamper-evident receipts.",
   "type": "module",
   "bin": {

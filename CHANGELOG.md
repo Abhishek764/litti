@@ -6,7 +6,9 @@ All notable changes to Litti are listed here. The format follows
 
 ## [Unreleased]
 
-Planned as **0.4.0**, the first release published to npm.
+## [0.4.0] - 2026-11-24
+
+The first release published to npm.
 
 ### Breaking
 - **Node.js 22 or newer is required** (`engines.node >=22`). Node 20 is end-of-life. Prebuilt
@@ -47,7 +49,10 @@ Planned as **0.4.0**, the first release published to npm.
 - `litti help`, `--help` and `-h` print help and exit without starting a server; `--port=N`.
 
 ### Changed
-- Docker image pinned to a `node:22-slim` digest, with OCI labels. `docker compose` publishes
+- New look across the app, docs and website: Albert Sans (bundled under the SIL OFL, so no
+  third-party font requests), a `#121212` canvas, a lime accent, pill buttons and soft shadows,
+  from one set of shared theme tokens. The docs keep a light theme on a cream background.
+- Docker image pinned to a `node:26-slim` digest, with OCI labels. `docker compose` publishes
   the port on `127.0.0.1` only; put a reverse proxy in front and set `LITTI_API_KEY` and
   `PUBLIC_URL` to share it with a team.
 - Render blueprint for Litti Connect no longer deploys on every push (`autoDeploy: false`).
@@ -66,5 +71,6 @@ Comprehension checks, risk tiers, diff-bound tokens, hash-chained receipts, agen
 Claude Code, Codex and OpenCode, the Changes view, Slack/Discord/Jira notifications and the
 built-in docs site at `/docs`.
 
-[Unreleased]: https://github.com/Abhishek764/litti/commits/main
+[Unreleased]: https://github.com/Abhishek764/litti/compare/v0.4.0...main
+[0.4.0]: https://github.com/Abhishek764/litti/releases/tag/v0.4.0
 [0.3.0]: https://github.com/Abhishek764/litti/commits/main

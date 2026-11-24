@@ -9,7 +9,7 @@
 
 [![CI](https://github.com/Abhishek764/litti/actions/workflows/ci.yml/badge.svg)](https://github.com/Abhishek764/litti/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/litti)](https://www.npmjs.com/package/litti)
-[![tests: 158 passing](https://img.shields.io/badge/tests-158%20passing-brightgreen.svg)](#litti-by-the-numbers)
+[![tests: 161 passing](https://img.shields.io/badge/tests-161%20passing-brightgreen.svg)](#litti-by-the-numbers)
 [![Node 22+](https://img.shields.io/badge/node-%E2%89%A522-339933.svg)](https://nodejs.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
@@ -223,13 +223,13 @@ Measured on this repository, not estimated.
 
 | | |
 |---|---|
-| Automated checks | **158** in 15 test suites, plus a full TypeScript typecheck (`npm test`) |
+| Automated checks | **161** in 15 test suites, plus a full TypeScript typecheck (`npm test`) |
 | CI | 9 jobs on every push: Windows, macOS and Linux × Node 22, 24 and 26, each with build, `npm audit`, pack and an install smoke test |
 | Agent command classifier | 100+ real shell commands in its table test (gated and not gated) |
 | Hook overhead | ~140 ms per agent shell command (compiled, Windows 11, Node 22; Node's own startup is ~80 ms of that). Safe commands never contact the server |
 | Runtime dependencies | 5 direct (`fastify`, `@fastify/static`, `better-sqlite3`, `dotenv`, `open`), 119 packages installed in total, `npm audit`: 0 known vulnerabilities |
-| npm package | 154 kB packed, 442 kB unpacked, 76 files |
-| Code | 6,238 lines of TypeScript in 43 files under `src/`, 2,766 lines of tests |
+| npm package | 190 kB packed, 486 kB unpacked, 81 files (includes the Albert Sans font, 30 kB) |
+| Code | 6,304 lines of TypeScript in 44 files under `src/`, 2,806 lines of tests |
 | Comprehension check kinds | 6 |
 | Risk tiers | 4 (0–3) |
 | Frontend frameworks | 0: plain HTML, CSS and JS |

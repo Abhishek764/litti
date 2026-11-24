@@ -1,7 +1,7 @@
 {
   "name": "litti-cli",
   "version": "0.4.0",
-  "description": "Proof of review for AI coding agents: risk tiering, comprehension quizzes, rubber-stamp detection, diff-bound tokens, tamper-evident receipts.",
+  "description": "Proof of review for AI coding agents. Blocks risky agent commands (commit, push, deploy, migrate) until a human reads the diff and passes a short check; every approval is bound to the exact change and logged in a tamper-evident receipt chain.",
   "type": "module",
   "bin": {
     "litti": "dist/main.js"
@@ -45,7 +45,7 @@
     "type": "git",
     "url": "git+https://github.com/Abhishek764/litti.git"
   },
-  "homepage": "https://github.com/Abhishek764/litti#readme",
+  "homepage": "https://abhishek764.github.io/litti/",
   "bugs": {
     "url": "https://github.com/Abhishek764/litti/issues"
   },
@@ -58,13 +58,20 @@
   },
   "keywords": [
     "ai-agents",
+    "coding-agent",
+    "claude-code",
+    "codex",
+    "opencode",
     "human-in-the-loop",
-    "approval",
+    "code-review",
+    "approval-gate",
+    "proof-of-review",
+    "audit-trail",
     "audit-log",
     "hash-chain",
+    "compliance",
+    "devsecops",
     "security",
-    "code-review",
-    "claude-code",
-    "proof-of-review"
+    "cli"
   ]
 }

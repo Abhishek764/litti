@@ -32,13 +32,16 @@ async function deliver(card: ActionCard, token: ApprovalToken): Promise<DeployRe
   const url = process.env.LITTI_DEPLOY_WEBHOOK;
   if (url) {
     const body = JSON.stringify({ event: 'action.approved', action: card, token });
+    // The reviewer sees this text: say what failed in words, not "fetch failed".
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-litti-signature': signWebhook(body), 'x-litti-action-id': card.id },
       body,
       signal: AbortSignal.timeout(Number(process.env.LITTI_WEBHOOK_TIMEOUT_MS) || 15000),
+    }).catch((err: Error) => {
+      throw new Error(err.name === 'TimeoutError' ? 'the deploy webhook (LITTI_DEPLOY_WEBHOOK) did not answer in time' : 'the deploy webhook (LITTI_DEPLOY_WEBHOOK) could not be reached');
     });
-    if (!res.ok) throw new Error(`deploy webhook returned ${res.status}`);
+    if (!res.ok) throw new Error(`the deploy webhook (LITTI_DEPLOY_WEBHOOK) answered HTTP ${res.status}`);
     return { ok: true, message: '✅ Deploy executed (handed to pipeline)' };
   }
   const dir = process.env.LITTI_DEPLOY_DIR || 'deployments';

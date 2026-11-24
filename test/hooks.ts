@@ -76,7 +76,40 @@ try {
       assert.equal(classify(c).risky, false, c);
     }
     assert.equal(classify('git commit -m x', { LITTI_GATE_COMMIT: 'false' }).risky, false);
-    assert.equal(classify('make release', { LITTI_GATE_PATTERNS: '^make release' }).risky, true);
+    assert.equal(classify('make ship-it', { LITTI_GATE_PATTERNS: '^make ship-it' }).risky, true);
+  });
+
+  await step('P0-6 classifier: every command from the QA probe list (table)', () => {
+    // [command, risky?] — QA run-1 probes (QA-5, QA-6, FIELD-3, SEC-4) plus the Wave B brief.
+    const table: [string, boolean][] = [
+      ['git -C ../repo push origin main', true], ['git --no-pager push', true], ['git -c core.hooksPath=/dev/null push', true], ['git -c user.email=x commit -m hi', true],
+      ['git --git-dir=.git push', true], ['git --git-dir .git push', true],
+      ['rm -r -f build', true], ['rm --recursive --force /', true], ['rm -R -f dist', true], ['find . -name "*.ts" -delete', true], ['find . -exec rm {} +', true],
+      [String.raw`del /s /q C:\proj`, true], ['rmdir /s /q src', true], ['Remove-Item -Path x -Rec -Force', true], ['Remove-Item -Recurse -Force dist', true], ['ri -r -fo node_modules', true],
+      ['twine upload dist/*', true], ['poetry publish', true], ['uv publish', true], ['npm unpublish litti@0.3.0', true], ['mvn deploy', true], ['./gradlew publish', true],
+      ['vercel --prod', true], ['npx vercel --prod', true], ['npm run deploy', true], ['pnpm run release', true], ['yarn run publish', true], ['yarn deploy', true], ['make deploy', true], ['./deploy.sh', true],
+      ['kubectl scale deploy web --replicas=0', true], ['kubectl patch svc web -p x', true], ['kubectl set image deploy/web web=img:2', true], ['kubectl create -f x.yaml', true],
+      ['kubectl apply -f k8s/', true], ['kubectl -n prod delete pod x', true], ['kubectl rollout restart deploy/web', true],
+      ['aws s3 rm s3://bucket --recursive', true], ['aws s3 sync . s3://b --delete', true], ['aws lambda update-function-code --function-name f', true], ['az group delete -n rg', true], ['gcloud compute instances delete vm1', true],
+      ['psql -c "DELETE FROM users"', true], ['psql -c "ALTER TABLE users DROP COLUMN email"', true], ['mysql -e "DROP TABLE t"', true], ['echo "TRUNCATE t" | psql', true],
+      ['redis-cli FLUSHALL', true], ['prisma db push --accept-data-loss', true], ['rails db:drop', true], ['rake db:migrate', true], ['python manage.py flush', true],
+      ['git checkout -- .', true], ['git restore --staged --worktree .', true], ['git stash drop', true], ['git stash clear', true], ['git rm -r src', true], ['git rebase -i HEAD~3', true],
+      ['git filter-branch --force', true], ['git branch --delete --force main', true], ['git tag -d v1', true], ['git push --force-with-lease', true], ['git clean -fdx', true],
+      ['gh release create v1', true], ['gh repo delete me/x --yes', true], ['docker buildx build --push -t x .', true], ['heroku releases:rollback', true],
+      ['GIT_DIR=.git git push', true], ['g""it push', true], [String.raw`g\it push`, true], ['eval "git push"', true], ['git push', true],
+      ['sh -c "git push"', true], ["bash -lc 'npm publish'", true], ['cd /repo && git push', true], ['npm test; rm -rf /', true], ['echo $(git push)', true], ['(git push)', true],
+      ['sudo -u deploy git push', true], ['env FOO=1 git push', true], ['nohup git push &', true], ['pwsh -Command "git push"', true], ['cmd /c git push', true],
+      [String.raw`C:\tools\git.exe push`, true], ['FOO=1 BAR=2 npm publish', true],
+      // false positives that must stay free
+      ['grep -rn "git push" docs/', false], ['echo "remember to git commit later"', false], ['git log --grep="git commit"', false], ['kubectl rollout status deploy/web', false],
+      ['cat vercel.json deploy.md', false], ['git commit-tree abc', false], ['man git-push', false], ['ls migrations/drop_table.sql', false], ['cat notes | grep "DROP TABLE"', false],
+      ['git restore --staged x', false], ['git status 2>&1', false], ['kubectl get pods -n prod', false], ['python -m pytest', false], ['git stash list', false], ['npm run build', false],
+      ['rm -r node_modules', false], ['git checkout main', false], ['git merge --abort', false],
+    ];
+    const wrong = table.filter(([c, risky]) => classify(c, {}).risky !== risky).map(([c, r]) => `${r ? 'MISS' : 'FP'} ${c}`);
+    assert.deepEqual(wrong, []);
+    assert.equal(classify('git push --force origin main', {}).action, 'delete', 'the most severe reading names the action');
+    assert.equal(classify('npm test && git commit -m x && git push', {}).action, 'deploy');
   });
 
   await step('extractCommand: Claude Code, Codex (argv) and OpenCode payloads', () => {
@@ -113,7 +146,8 @@ try {
     const p = getPending(firstId)!;
     assert.equal(p.actionCard.agent, 'claude-code');
     assert.ok(p.actionCard.diff.includes('+git push origin main'), 'command is part of what is reviewed');
-    assert.ok(p.actionCard.diff.includes('price = 100'), 'working-tree diff is part of what is reviewed');
+    assert.ok(!p.actionCard.diff.includes('price = 100'), 'uncommitted edits are not pushed, so not reviewed for a push');
+    assert.ok(p.actionCard.diff.includes('.litti/commits') && p.actionCard.diff.includes('price = 1;'), 'the unpushed commits are what is reviewed');
     const again = await gate('git push origin main', repo, opts);
     assert.equal(again.decision, 'deny');
     assert.equal(again.actionId, firstId, 'no duplicate review request');
@@ -139,6 +173,57 @@ try {
     const after = await gate('npm publish', repo, opts);
     assert.equal(after.decision, 'deny');
     assert.notEqual(after.actionId, d.actionId);
+  });
+
+  await step('P0-7 review what ships: push = commits ahead (SHAs bound), commit -am = tracked, commit = staged', async () => {
+    const r2 = mkdtempSync(join(tmpdir(), 'litti-hooks-push-'));
+    const bare = mkdtempSync(join(tmpdir(), 'litti-hooks-bare-'));
+    const g = (...a: string[]) => execFileSync('git', ['-C', r2, ...a], { stdio: 'pipe' }).toString().trim();
+    try {
+      execFileSync('git', ['init', '-q', '--bare', bare]);
+      g('init', '-q'); g('config', 'user.email', 't@e.test'); g('config', 'user.name', 'T'); g('config', 'core.autocrlf', 'false');
+      writeFileSync(join(r2, 'db.sql'), 'select 1;\n');
+      g('add', '.'); g('commit', '-q', '-m', 'init');
+      g('remote', 'add', 'origin', bare); g('push', '-q', '-u', 'origin', 'HEAD');
+      writeFileSync(join(r2, 'db.sql'), 'DROP TABLE users;\n');
+      g('commit', '-q', '-am', 'v2 DROP EVERYTHING');
+      const sha = g('rev-parse', 'HEAD');
+      writeFileSync(join(r2, 'notes.txt'), 'untracked\n');
+      const { gateDiff } = await import('../src/integrations/gate.js');
+      const push = await gateDiff('git push', r2) as { diff: string };
+      assert.ok(push.diff.includes(`${sha} v2 DROP EVERYTHING`), 'commit SHA + subject bound into the review');
+      assert.ok(push.diff.includes('+DROP TABLE users;'), 'the pushed change is shown');
+      assert.ok(!push.diff.includes('untracked'), 'untracked files do not ship with a push');
+      const viaC = await gateDiff(`git -C "${r2}" push`, repo) as { diff: string };
+      assert.equal(viaC.diff.replace(/^\+git.*$/m, ''), push.diff.replace(/^\+git.*$/m, ''), 'git -C <repo> reviews that repo');
+      assert.ok((await gateDiff(`cd "${r2}" && git push`, repo) as { diff: string }).diff.includes(sha), 'cd <repo> && git push');
+      // A new commit after approval changes what is reviewed (the SHA list is in the bound diff).
+      writeFileSync(join(r2, 'db.sql'), 'DROP TABLE orders;\n'); g('commit', '-q', '-am', 'more');
+      assert.notEqual((await gateDiff('git push', r2) as { diff: string }).diff, push.diff);
+
+      // commit -am: tracked edits only; plain commit: the index only.
+      writeFileSync(join(r2, 'db.sql'), 'select 2;\n');
+      const am = await gateDiff('git commit -am "x"', r2) as { diff: string };
+      assert.ok(am.diff.includes('+select 2;') && !am.diff.includes('untracked'), 'commit -am: tracked changes, no untracked files');
+      writeFileSync(join(r2, 'staged.txt'), 'staged\n'); g('add', 'staged.txt');
+      const plain = await gateDiff('git commit -m "x"', r2) as { diff: string };
+      assert.ok(plain.diff.includes('+staged') && !plain.diff.includes('+select 2;'), 'commit: staged only');
+      const chain = await gateDiff('git add -A && git commit -m x', r2) as { diff: string };
+      assert.ok(chain.diff.includes('+select 2;') && chain.diff.includes('untracked'), 'add -A && commit: whole tree');
+
+      // Unreadable or incomplete ⇒ deny, never "command only".
+      const notRepo = mkdtempSync(join(tmpdir(), 'litti-hooks-plain-'));
+      const called = { n: 0 };
+      const fetchImpl = async () => { called.n++; throw new Error('must not be called'); };
+      const d = await gate('git push', notRepo, { ...opts, fetchImpl });
+      assert.equal(d.decision, 'deny'); assert.match(d.reason, /not a git repository/);
+      for (let i = 0; i < 205; i++) writeFileSync(join(r2, `junk-${i}.txt`), `${i}\n`);
+      const big = await gate('npm publish', r2, { ...opts, fetchImpl });
+      assert.equal(big.decision, 'deny'); assert.match(big.reason, /too large/);
+      assert.equal(called.n, 0, 'nothing sent for review');
+      assert.ok(!('error' in await gateDiff('vercel --prod', notRepo)), 'a non-git command outside git reviews the command');
+      rmSync(notRepo, { recursive: true, force: true });
+    } finally { rmSync(r2, { recursive: true, force: true }); rmSync(bare, { recursive: true, force: true }); }
   });
 
   await step('fail closed when Litti is down; LITTI_HOOK_FAIL_OPEN opts out', async () => {
@@ -192,6 +277,7 @@ try {
     const proj = mkdtempSync(join(tmpdir(), 'litti-envproj-'));
     const home = mkdtempSync(join(tmpdir(), 'litti-envhome-'));
     try {
+      execFileSync('git', ['init', '-q', proj]); // git commands are only reviewed inside a repository
       writeFileSync(join(proj, '.env'), 'LITTI_HOOK_FAIL_OPEN=true\nLITTI_GATE_COMMIT=false\nLITTI_URL=http://127.0.0.1:9\n');
       // config.env (owned by the user) names the real server's port; the hook must use it.
       writeFileSync(join(home, 'config.env'), `APPROVAL_SERVER_PORT=${new URL(URL_).port}\nSECRET_KEY=not-for-the-hook\n`);

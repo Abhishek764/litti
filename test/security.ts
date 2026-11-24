@@ -8,7 +8,7 @@ process.env.LITTI_DEPLOY_DIR = join(tmpdir(), `litti-sec-${process.pid}`);
 delete process.env.LITTI_API_KEY;
 import { initDb, getPending, getApprovalToken } from '../src/chain/db.js';
 import { buildServer, setNotifier } from '../src/approval/server.js';
-import { issueViewStamp } from '../src/approval/identity.js';
+import { issueTicket, issueViewStamp, reviewerKey } from '../src/approval/identity.js';
 import { sampleAnswer } from '../src/agents/challenges.js';
 import { createToken } from '../src/approval/token.js';
 
@@ -98,15 +98,26 @@ try {
     const gateReq = { agent: 'claude-code', action: 'deploy', command: 'git push origin main', description: 'push', diff: gateDiff, touchedPaths: ['src/pay.ts'] };
     const first = (await app.inject({ method: 'POST', url: '/api/gate', payload: gateReq })).json();
     assert.equal(first.decision, 'deny');
-    // The agent declares the same diff as a harmless read: Tier 0, auto-approved with a token.
+    // The agent declares the same diff as a harmless read. SEC-1c: a diff that changes files is
+    // at least Tier 1 whatever the label says, so it is not auto-approved.
     const self = (await app.inject({ method: 'POST', url: '/api/actions', payload: { agent: 'claude-code', action: 'read', description: 'just reading', diff: gateDiff, touchedPaths: [] } })).json();
-    assert.equal(self.tier, 0);
+    assert.ok(self.tier >= 1, 'a "read" that changes files gets reviewed');
+    assert.equal(self.status, 'pending');
+    const { assessRisk } = await import('../src/rules/tiering.js');
+    assert.match(assessRisk(getPending(self.id)!.actionCard).reasons.join(' '), /diff changes files/);
     const retry = (await app.inject({ method: 'POST', url: '/api/gate', payload: gateReq })).json();
-    assert.equal(retry.decision, 'deny', 'a self-declared Tier 0 action must not satisfy the gate');
+    assert.equal(retry.decision, 'deny', 'a self-declared action must not satisfy the gate');
     assert.equal(retry.id, first.id, 'still the gate\'s own pending review');
-    const shipped = await consume(self.token, gateDiff);
+    // A real Tier 0 (nothing changes) is logged with a token, but that token never ships.
+    const read = (await app.inject({ method: 'POST', url: '/api/actions', payload: { agent: 'claude-code', action: 'read', description: 'list files', diff: 'ls -la', touchedPaths: [] } })).json();
+    assert.equal(read.tier, 0);
+    const shipped = await consume(read.token, 'ls -la');
     assert.equal(shipped.statusCode, 409, 'a Tier 0 token is not a shipping approval');
     assert.match(shipped.json().reason, /Tier 0/);
+    for (const action of ['lint', 'format', 'test']) {
+      const r = (await app.inject({ method: 'POST', url: '/api/actions', payload: { agent: 'bot', action, description: action, diff: '--- a/x.ts\n+++ b/x.ts\n@@ -1 +1 @@\n-a\n+b', touchedPaths: ['x.ts'] } })).json();
+      assert.ok(r.tier >= 1, `${action} that rewrites x.ts is at least Tier 1`);
+    }
   });
 
   await step('SEC-10 failed deploy: deploy-failed receipt, not shippable, gate stays shut; retry re-runs it', async () => {
@@ -125,6 +136,8 @@ try {
         last = (await app.inject({ method: 'POST', url: `/approve/${first.id}/submit`, payload: { approver: who, quizAnswer: sampleAnswer(getPending(first.id)!), scrolledToBottom: true, viewStamp: issueViewStamp(first.id, Date.now() - 45000) } })).json();
       }
       assert.equal(last.ok, false, 'the reviewer sees the failure');
+      assert.match(last.message, /could not be reached/, 'in words, not "fetch failed"');
+      assert.doesNotMatch(last.message, /fetch failed/);
       assert.equal(getPending(first.id)!.status, 'deploy-failed');
       assert.equal(allReceipts().at(-1)!.outcome, 'deploy-failed', 'the chain does not claim a deploy that never happened');
       assert.equal((await gateCall()).decision, 'deny', 'the gate does not allow a failed deploy');
@@ -146,6 +159,132 @@ try {
   await step('0.5.10 the tamper button only exists in demo mode', async () => {
     assert.equal((await app.inject({ method: 'GET', url: '/api/meta' })).json().demo, false);
     assert.equal((await app.inject({ method: 'POST', url: '/api/demo/break-chain', payload: {} })).statusCode, 404);
+  });
+
+  await step('P0-5 SEC-3 review links need the admin key, also in local mode; litti creates one', async () => {
+    const a = await propose({ description: 'admin key' });
+    const link = (headers: Record<string, string> = {}) => app.inject({ method: 'POST', url: `/api/actions/${a.id}/review-link`, headers, payload: { reviewer: 'bob' } });
+    assert.equal((await link()).statusCode, 401, 'local mode, no admin key configured: refused');
+    process.env.LITTI_ADMIN_KEY = 'adm';
+    try {
+      assert.equal((await link()).statusCode, 401, 'no header');
+      assert.equal((await link({ 'x-litti-admin-key': 'nope' })).statusCode, 401, 'wrong key');
+      assert.equal((await link({ 'x-litti-admin-key': 'adm' })).statusCode, 200);
+    } finally { delete process.env.LITTI_ADMIN_KEY; }
+    const { mkdtempSync, readFileSync, writeFileSync, rmSync } = await import('node:fs');
+    const { loadHome } = await import('../src/home.js');
+    const home = mkdtempSync(join(tmpdir(), 'litti-sec-home-'));
+    try {
+      const env: Record<string, string | undefined> = { LITTI_HOME: home };
+      loadHome(env);
+      assert.match(env.LITTI_ADMIN_KEY ?? '', /^[0-9a-f]{48}$/, 'first run generates LITTI_ADMIN_KEY');
+      assert.match(readFileSync(join(home, 'config.env'), 'utf8'), /^LITTI_ADMIN_KEY=[0-9a-f]{48}$/m);
+      writeFileSync(join(home, 'config.env'), 'SECRET_KEY=' + 'x'.repeat(64) + '\n');
+      const old: Record<string, string | undefined> = { LITTI_HOME: home };
+      loadHome(old);
+      assert.match(old.LITTI_ADMIN_KEY ?? '', /^[0-9a-f]{48}$/, 'an older config gets one added');
+    } finally { rmSync(home, { recursive: true, force: true }); }
+  });
+
+  await step('P0-5 SEC-8 one person counts once: case, zero-width, Cyrillic/Greek look-alikes', async () => {
+    assert.equal(reviewerKey('Bob'), 'bob');
+    for (const v of ['bob​', 'Bоb', 'Вob ', 'B o b', 'BOB⁠', 'Ｂob', 'B‏ob']) assert.equal(reviewerKey(v), 'bob', JSON.stringify(v));
+    assert.notEqual(reviewerKey('rob'), 'bob');
+    const a = await propose({ action: 'delete', description: 'needs three' });
+    assert.equal(getPending(a.id)!.requiredApprovers, 3);
+    const submit = (who: string) => app.inject({ method: 'POST', url: `/approve/${a.id}/submit`, payload: { approver: who, quizAnswer: sampleAnswer(getPending(a.id)!), scrolledToBottom: true, viewStamp: issueViewStamp(a.id, Date.now() - 45000) } });
+    assert.equal((await submit('Bob')).json().ok, true);
+    for (const twin of ['Bob​', 'Bоb', 'bοb']) {
+      const r = await submit(twin);
+      assert.equal(r.json().ok, false, twin);
+      assert.match(r.json().message, /already countersigned/);
+    }
+    assert.equal(getPending(a.id)!.currentApprovals.length, 1);
+    assert.equal((await submit('bоt')).json().ok, false, 'requester look-alike ("bot" = agent "bot") refused');
+  });
+
+  await step('P0-5 SEC-7 a view stamp is single-use and bound to its reviewer', async () => {
+    const a = await propose({ description: 'stamps' });
+    const tAna = issueTicket(a.id, 'ana', reviewerKey('ana'));
+    const send = (body: Record<string, unknown>) => app.inject({ method: 'POST', url: `/approve/${a.id}/submit`, payload: { quizAnswer: sampleAnswer(getPending(a.id)!), scrolledToBottom: true, ...body } });
+    // A stamp opened for ben can't be used by ana; an unbound one can't be used with a ticket.
+    assert.equal((await send({ ticket: tAna, viewStamp: issueViewStamp(a.id, Date.now() - 45000, reviewerKey('ben')) })).statusCode, 403);
+    assert.equal((await send({ ticket: tAna, viewStamp: issueViewStamp(a.id, Date.now() - 45000) })).statusCode, 403);
+    // A failed submit (too fast) burns the stamp: waiting and resubmitting needs a fresh page.
+    const stamp = issueViewStamp(a.id, Date.now() - 2000, reviewerKey('ana'));
+    const fast = await send({ ticket: tAna, viewStamp: stamp });
+    assert.equal(fast.json().ok, false);
+    assert.match(fast.json().message, /at least/);
+    assert.equal((await send({ ticket: tAna, viewStamp: stamp })).statusCode, 409, 'reused stamp refused');
+    // The page served with the ticket carries a stamp bound to ana.
+    const page = (await app.inject({ url: `/approve/${a.id}?t=${encodeURIComponent(tAna)}` })).body;
+    const served = page.match(/id="viewStamp" value="([^"]+)"/)![1];
+    assert.equal(JSON.parse(Buffer.from(served.split('.')[0], 'base64url').toString()).r, 'ana');
+    const ok = await send({ ticket: tAna, viewStamp: issueViewStamp(a.id, Date.now() - 45000, reviewerKey('ana')) });
+    assert.equal(ok.json().ok, true, ok.json().message);
+  });
+
+  await step('P0-10 SEC-11 labelled API keys: the key label is the requester, body agent only a detail', async () => {
+    process.env.LITTI_API_KEYS = 'ci-bot:key-one, nightly:key-two';
+    try {
+      const post = (key: string, agent: string) => app.inject({ method: 'POST', url: '/api/actions', headers: { 'x-litti-key': key }, payload: { agent, action: 'edit', description: 'labelled', diff: DIFF, touchedPaths: ['src/pay.ts'] } });
+      assert.equal((await post('nope', 'x')).statusCode, 401);
+      const r = (await post('key-one', 'alice')).json();
+      const card = getPending(r.id)!.actionCard;
+      assert.equal(card.agent, 'ci-bot', 'the agent cannot name itself "alice"');
+      assert.equal(card.agentDetail, 'alice');
+      assert.equal((await post('key-two', 'nightly')).statusCode, 200);
+      const gate = (await app.inject({ method: 'POST', url: '/api/gate', headers: { 'x-litti-key': 'key-two' }, payload: { agent: 'bob', action: 'deploy', command: 'npm publish', description: 'x', diff: DIFF + '\n+// gate' } })).json();
+      assert.equal(getPending(gate.id)!.actionCard.agent, 'nightly');
+      assert.equal((await app.inject({ url: '/api/pending' })).statusCode, 401, 'LITTI_API_KEYS alone is team mode');
+    } finally { delete process.env.LITTI_API_KEYS; }
+  });
+
+  await step('P0-10 SEC-17 status codes and a boolean reversible', async () => {
+    const send = (id: string, who: string, ago = 45000) => app.inject({ method: 'POST', url: `/approve/${id}/submit`, payload: { approver: who, quizAnswer: sampleAnswer(getPending(id)!), scrolledToBottom: true, viewStamp: issueViewStamp(id, Date.now() - ago) } });
+    assert.equal((await app.inject({ method: 'POST', url: '/approve/nope/submit', payload: {} })).statusCode, 404);
+    const a = await propose({ description: 'codes', action: 'migrate' });
+    assert.equal((await send(a.id, 'bot')).statusCode, 403, 'requester');
+    assert.equal((await send(a.id, 'ana', 2000)).statusCode, 422, 'too fast');
+    assert.equal((await send(a.id, 'ana')).statusCode, 200);
+    assert.equal((await send(a.id, 'ANA')).statusCode, 409, 'already countersigned');
+    await send(a.id, 'ben');
+    assert.equal((await send(a.id, 'cy')).statusCode, 409, 'no longer pending');
+    for (const reversible of ['false', 0, 'yes']) {
+      assert.equal((await app.inject({ method: 'POST', url: '/api/actions', payload: { agent: 'bot', action: 'edit', description: 'x', diff: DIFF, touchedPaths: [], reversible } })).statusCode, 400, String(reversible));
+    }
+    assert.equal((await app.inject({ method: 'POST', url: '/api/actions', payload: { agent: 'bot', action: 'edit', description: 'x', diff: DIFF, touchedPaths: [], reversible: false } })).statusCode, 200);
+  });
+
+  await step('P0-10 SEC-12 quiz distractors also come from the diff; always 4 options', async () => {
+    const { generateQuiz } = await import('../src/agents/gatekeeper.js');
+    const card = (diff: string) => ({ id: 'q', agent: 'a', action: 'migrate' as const, description: 'd', diff, diffHash: 'h', touchedPaths: [], reversible: false, rollbackPlan: '', timestamp: '' });
+    const drop = generateQuiz(card(' SELECT * FROM orders JOIN invoices ON 1;\n-DROP TABLE users;\n+-- gone'));
+    assert.equal(drop.options.length, 4);
+    assert.ok(drop.options.includes('orders') && drop.options.includes('invoices'), 'names from the diff are distractors too, so Ctrl+F does not give the answer away');
+    assert.equal(drop.options[drop.correctIndex], 'users');
+    const sym = generateQuiz(card(' function loadUser() {}\n function renderPage() {}\n+function chargeCard() {}'));
+    assert.equal(sym.options.length, 4);
+    assert.ok(sym.options.includes('loadUser') && sym.options.includes('renderPage'));
+    for (const d of ['+a', '+x: 1;\n-x: 2;', '-color: red;\n+color: blue;']) assert.equal(generateQuiz(card(d)).options.length, 4, d);
+  });
+
+  await step('FIELD-11 a newer gate request for the same command + repo supersedes the older pending one', async () => {
+    const gateReq = (diffLine: string, repo = '/work/app', command = 'git commit -m wip') => app.inject({ method: 'POST', url: '/api/gate', payload: {
+      agent: 'claude-code', action: 'edit', command, repo, description: 'commit', diff: `--- a/a.ts\n+++ b/a.ts\n@@ -1 +1 @@\n-a\n+${diffLine}`, touchedPaths: ['a.ts'] } }).then(r => r.json());
+    const one = await gateReq('first');
+    const other = await gateReq('other repo', '/work/other');
+    const otherCmd = await gateReq('other command', '/work/app', 'npm publish');
+    const two = await gateReq('second');
+    assert.notEqual(one.id, two.id);
+    assert.equal(getPending(one.id)!.status, 'superseded');
+    assert.equal(getPending(two.id)!.status, 'pending');
+    assert.equal(getPending(other.id)!.status, 'pending', 'another repository is untouched');
+    assert.equal(getPending(otherCmd.id)!.status, 'pending', 'another command is untouched');
+    const pending = (await app.inject({ url: '/api/pending' })).json().pending.map((p: { id: string }) => p.id);
+    assert.ok(!pending.includes(one.id) && pending.includes(two.id), 'superseded requests leave the inbox');
+    const late = await app.inject({ method: 'POST', url: `/approve/${one.id}/submit`, payload: { approver: 'ana', quizAnswer: 'x', scrolledToBottom: true, viewStamp: issueViewStamp(one.id, Date.now() - 45000) } });
+    assert.equal(late.statusCode, 409, 'a superseded review cannot be approved');
   });
 } finally { await app.close(); }
 

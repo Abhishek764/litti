@@ -9,12 +9,14 @@ export function assessRisk(card: ActionCard): RiskAssessment {
 
   // Tier 0: read-only actions auto-approve, unless the content says otherwise.
   const readOnly = ['read', 'lint', 'format', 'test'].includes(card.action);
-  if (readOnly && !touchesCritical && !destructivePatterns.test(card.diff)) {
+  // The tier comes from the content, not the label (SEC-1c): a "read" whose diff changes lines is a write.
+  const changesFiles = card.diff.split('\n').some(l => /^[+-]/.test(l) && !/^(\+\+\+|---)(\s|$)/.test(l));
+  if (readOnly && !changesFiles && !touchesCritical && !destructivePatterns.test(card.diff)) {
     return { tier: 0, reasons: ['Read-only operation'], requiredApprovers: 0 };
   }
 
   let tier: Tier = 1;
-  const reasons: string[] = [readOnly ? `Declared "${card.action}" but touches risky content` : 'Write operation'];
+  const reasons: string[] = [readOnly ? `Declared "${card.action}" but ${changesFiles ? 'its diff changes files' : 'touches risky content'}` : 'Write operation'];
 
   // Path-based bumps.
   for (const p of card.touchedPaths) {

@@ -46,7 +46,10 @@ let passed = 0;
 function step(name: string, fn: () => void) { fn(); passed++; console.log(`  ✓ ${name}`); }
 
 step('the scanner catches real IPs and personal paths, and allows placeholders and doc ranges', () => {
-  const bad = ['host 10.0.0.7 here', 'from 8.8.8.8.', 'C:\\Users\\jdoe\\x', 'C:\\\\Users\\\\jdoe', '/Users/jdoe/code', 'cd /home/jdoe'];
+  // Built at runtime so this file doesn't trip its own scan.
+  const ip = (...o: number[]) => o.join('.');
+  const U = 'Us' + 'ers', H = 'ho' + 'me';
+  const bad = [`host ${ip(10, 0, 0, 7)} here`, `from ${ip(8, 8, 8, 8)}.`, `C:\\${U}\\jdoe\\x`, `C:\\\\${U}\\\\jdoe`, `/${U}/jdoe/code`, `cd /${H}/jdoe`];
   for (const s of bad) assert.equal(scanText(s).length, 1, `should flag: ${s}`);
   const ok = ['127.0.0.1:3847', 'HOST=0.0.0.0', '192.0.2.10', '198.51.100.7', '203.0.113.5', 'v1.2.3.4', 'pkg@1.2.3.4',
     'C:\\Users\\<you>', '/Users/$USER/x', '/home/runner/work', 'C:\\Users\\you', 'version 22.19.0', '1.2.3.4.5'];

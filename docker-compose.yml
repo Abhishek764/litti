@@ -1,13 +1,16 @@
-# Litti in Docker.
-#   cp .env.example .env    # optional for a personal server; needed for team use (see below)
-#   docker compose up -d    # → http://127.0.0.1:3847
+# Litti in Docker — for a team server. For personal use on your own machine,
+# use `npm install -g litti && litti` instead (no setup, keys are created for you).
 #
-# The port is published on 127.0.0.1 only, so nothing outside this machine can reach Litti.
-# For a team, put an https reverse proxy / SSO proxy on this host in front of it, and set in .env:
-#   SECRET_KEY=…       LITTI_API_KEY=…     LITTI_ADMIN_KEY=…
-#   PUBLIC_URL=https://litti.yourco.com   (required once LITTI_API_KEY is set)
-#   TRUST_PROXY=true   LITTI_IDENTITY_HEADER=x-forwarded-email
-# Only change the binding to "3847:3847" if a firewall already limits who can reach the port.
+#   cp .env.example .env    # then set, at least:
+#     SECRET_KEY=…          # 32+ random chars (node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
+#     LITTI_API_KEY=…       # agents send it as x-litti-key; required because the container listens on 0.0.0.0
+#     LITTI_ADMIN_KEY=…     # issues review links; keep it away from agents
+#     PUBLIC_URL=https://litti.yourco.com   # what review links point to
+#     TRUST_PROXY=true  LITTI_IDENTITY_HEADER=x-forwarded-email   # reviewers sign in through your SSO proxy
+#   docker compose up -d
+#
+# The port is published on 127.0.0.1 only: put your https reverse proxy / SSO proxy on this host in
+# front of it. Only change the binding to "3847:3847" if a firewall already limits who can reach it.
 # Guide: docs/guide/team-setup.md
 services:
   litti:
@@ -15,7 +18,7 @@ services:
     restart: unless-stopped
     env_file:
       - path: .env
-        required: false
+        required: true
     ports:
       - "127.0.0.1:3847:3847"
     volumes:

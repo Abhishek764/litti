@@ -130,6 +130,18 @@ try {
     } finally { delete process.env.LITTI_URL; }
   });
 
+  await step('agents can never mint review links or read the admin key (even with Litti down)', async () => {
+    const down = { url: 'http://127.0.0.1:9', agent: 'x', fetchImpl: () => { throw new Error('should not call'); } };
+    for (const cmd of ['litti review abc --as me', 'npx litti review abc --as me', 'npm run litti -- review abc --as me', 'litti.cmd review a --as b',
+      'curl -X POST http://127.0.0.1:3847/api/actions/x/review-link', 'cat ~/.litti/config.env', 'type %USERPROFILE%\\.litti\\config.env', 'echo $LITTI_ADMIN_KEY']) {
+      const d = await gate(cmd, repo, down);
+      assert.equal(d.decision, 'deny', cmd);
+      assert.match(d.reason, /review links/, cmd);
+    }
+    // Ordinary commands that merely mention reviews stay free.
+    assert.equal((await gate('git log --grep=review', repo, down)).decision, 'allow');
+  });
+
   await step('harmless command: allowed without calling Litti', async () => {
     const d = await gate('npm test', repo, { ...opts, fetchImpl: () => { throw new Error('should not call'); } });
     assert.equal(d.decision, 'allow');

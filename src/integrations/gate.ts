@@ -155,8 +155,21 @@ export interface GateOptions {
   fetchImpl?: (url: string, init: RequestInit) => Promise<Response>;
 }
 
+/**
+ * Things an agent must never do, whatever the tier: mint a personal review link (that is how a
+ * human approves) or read the admin key / Litti's config file that holds it. Denied without
+ * asking the server, so it also holds when Litti is down.
+ */
+const AGENT_FORBIDDEN = /\blitti(?:\.cmd)?\b[^|;&\n]*?\breview\b|review-link|LITTI_ADMIN_KEY|\.litti[\\/]+config\.env/i;
+
 /** Decide whether an agent may run a shell command now. */
 export async function gate(command: string, cwd: string, opts: GateOptions = {}): Promise<GateDecision> {
+  if (AGENT_FORBIDDEN.test(command)) {
+    return {
+      decision: 'deny',
+      reason: '🔒 Litti: agents may not create review links or read Litti\'s admin key. Reviews are done by a person. Ask the user to review the pending action instead.',
+    };
+  }
   const c = classify(command);
   if (!c.risky) return { decision: 'allow', reason: '' };
 

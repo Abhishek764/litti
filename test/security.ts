@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 process.env.SECRET_KEY = 'security-test-secret-'.repeat(3);
+process.env.LITTI_SOLO = 'false'; // quorum + dedupe attacks need team quorums
 process.env.LITTI_ALLOW_SELF_ASSERTED = 'true';
 process.env.LITTI_DEPLOY_DIR = join(tmpdir(), `litti-sec-${process.pid}`);
 delete process.env.LITTI_API_KEY;
@@ -285,6 +286,18 @@ try {
     assert.ok(!pending.includes(one.id) && pending.includes(two.id), 'superseded requests leave the inbox');
     const late = await app.inject({ method: 'POST', url: `/approve/${one.id}/submit`, payload: { approver: 'ana', quizAnswer: 'x', scrolledToBottom: true, viewStamp: issueViewStamp(one.id, Date.now() - 45000) } });
     assert.equal(late.statusCode, 409, 'a superseded review cannot be approved');
+  });
+
+  await step('solo mode: locally one reviewer per action at every tier; LITTI_SOLO=false keeps team quorums', async () => {
+    const migration = { action: 'migrate', touchedPaths: ['migrations/9.sql'], diff: '+ALTER TABLE users ADD COLUMN x int;', reversible: true };
+    delete process.env.LITTI_SOLO;
+    try {
+      const solo = await propose(migration);
+      assert.equal(solo.tier, 2);
+      assert.equal(solo.requiredApprovers, 1, 'a solo developer can finish a Tier 2 review alone');
+    } finally { process.env.LITTI_SOLO = 'false'; }
+    const team = await propose({ ...migration, description: 'team' });
+    assert.equal(team.requiredApprovers, 2, 'team quorum when solo mode is off');
   });
 } finally { await app.close(); }
 

@@ -130,12 +130,18 @@ export async function gateDiff(command: string, cwd: string, commands = classify
       parts.push(block('.litti/commits', out.commits.length
         ? [`push sends ${out.commits.length} commit(s) ${out.upstream ? `ahead of ${out.upstream}` : 'that no remote has yet'}:`, ...out.commits]
         : [`nothing ahead of ${out.upstream || 'the remotes'}`]));
-      if (out.diff) { parts.push(out.diff.replace(/\n$/, '')); paths.push(...splitDiff(out.diff).map(f => f.path)); }
+      if (out.diff) {
+        const hidden = hiddenTextFile(splitDiff(out.diff));
+        if (hidden) return { repo: plan.repo, error: `${hidden.path} is a text file but git shows it only as "binary" (check .gitattributes), so it can't be reviewed.` };
+        parts.push(out.diff.replace(/\n$/, '')); paths.push(...splitDiff(out.diff).map(f => f.path));
+      }
     }
     if (plan.scope) {
       const c = await readChanges(plan.repo, plan.scope);
       if (c.truncated) return { repo: plan.repo, error: 'the change is too large to review in one go (over 512 KB, over 200 new files, or a file git can\'t read). Split it into smaller commits.' };
       branch = c.branch;
+      const hidden = hiddenTextFile(c.files);
+      if (hidden) return { repo: plan.repo, error: `${hidden.path} is a text file but git shows it only as "binary" (check .gitattributes), so it can't be reviewed.` };
       if (c.files.length) { parts.push(c.diff); paths.push(...c.files.map(f => f.path)); }
     }
   } catch (err) {
@@ -157,10 +163,15 @@ export interface GateOptions {
 
 /**
  * Things an agent must never do, whatever the tier: mint a personal review link (that is how a
- * human approves) or read the admin key / Litti's config file that holds it. Denied without
+ * human approves) or touch Litti's data folder (`.litti/`: config.env with the admin key, and
+ * litti.db with the expected answers). Denied without
  * asking the server, so it also holds when Litti is down.
  */
-const AGENT_FORBIDDEN = /\blitti(?:\.cmd)?\b[^|;&\n]*?\breview\b|review-link|LITTI_ADMIN_KEY|\.litti[\\/]+config\.env/i;
+const AGENT_FORBIDDEN = /\blitti(?:\.cmd)?\b[^|;&\n]*?\breview\b|review-link|LITTI_ADMIN_KEY|\.litti[\\/]|\blitti(?:-demo)?\.db\b/i;
+
+/** Source/text files that git would only show as "Binary files differ" if someone forced it (.gitattributes `-diff`). */
+const TEXT_FILE = /\.(c|cc|cpp|cs|css|cjs|ex|exs|go|h|hpp|html?|ini|java|js|json|jsx|kt|lua|md|mjs|php|ps1|py|rb|rs|scss|sh|sql|svelte|swift|toml|ts|tsx|txt|vue|xml|ya?ml|env)$/i;
+const hiddenTextFile = (files: Array<{ path: string; status: string }>) => files.find(f => f.status === 'binary' && TEXT_FILE.test(f.path));
 
 /** Decide whether an agent may run a shell command now. */
 export async function gate(command: string, cwd: string, opts: GateOptions = {}): Promise<GateDecision> {

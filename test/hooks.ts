@@ -133,13 +133,29 @@ try {
   await step('agents can never mint review links or read the admin key (even with Litti down)', async () => {
     const down = { url: 'http://127.0.0.1:9', agent: 'x', fetchImpl: () => { throw new Error('should not call'); } };
     for (const cmd of ['litti review abc --as me', 'npx litti review abc --as me', 'npm run litti -- review abc --as me', 'litti.cmd review a --as b',
-      'curl -X POST http://127.0.0.1:3847/api/actions/x/review-link', 'cat ~/.litti/config.env', 'type %USERPROFILE%\\.litti\\config.env', 'echo $LITTI_ADMIN_KEY']) {
+      'curl -X POST http://127.0.0.1:3847/api/actions/x/review-link', 'cat ~/.litti/config.env', 'type %USERPROFILE%\\.litti\\config.env', 'echo $LITTI_ADMIN_KEY',
+      'sqlite3 ~/.litti/litti.db "select quiz_answer from pending_actions"', 'cp litti.db /tmp/x']) {
       const d = await gate(cmd, repo, down);
       assert.equal(d.decision, 'deny', cmd);
       assert.match(d.reason, /review links/, cmd);
     }
     // Ordinary commands that merely mention reviews stay free.
     assert.equal((await gate('git log --grep=review', repo, down)).decision, 'allow');
+  });
+
+  await step('a text file disguised as binary (.gitattributes -diff) is denied, not reviewed blind', async () => {
+    const attrs = join(repo, '.git', 'info', 'attributes');
+    mkdirSync(join(repo, '.git', 'info'), { recursive: true });
+    writeFileSync(attrs, '*.js -diff\n');
+    writeFileSync(join(repo, 'app.js'), 'export const price = 999;\n');
+    try {
+      const d = await gate('git commit -am hidden', repo, { url: 'http://127.0.0.1:9', agent: 'x', fetchImpl: () => { throw new Error('should not call'); } });
+      assert.equal(d.decision, 'deny');
+      assert.match(d.reason, /app\.js is a text file but git shows it only as "binary"/);
+    } finally {
+      rmSync(attrs, { force: true });
+      git('checkout', '--', 'app.js');
+    }
   });
 
   await step('harmless command: allowed without calling Litti', async () => {

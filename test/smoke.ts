@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import assert from 'node:assert/strict';
 process.env.SECRET_KEY = 'test-secret-'.repeat(6);
+process.env.LITTI_SOLO = 'false'; // these tests check team quorums (Tier 2 = 2 reviewers)
 process.env.LITTI_ALLOW_SELF_ASSERTED = 'true';
 const DEPLOY_DIR = mkdtempSync(join(tmpdir(), 'litti-deploy-'));
 process.env.LITTI_DEPLOY_DIR = DEPLOY_DIR;

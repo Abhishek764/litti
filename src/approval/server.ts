@@ -71,12 +71,24 @@ function takeTierBump(): number {
 }
 
 /** Tier-and-quiz an action, apply any pending rubber-stamp bump, persist it, announce it. */
+/**
+ * How many different reviewers an action needs. Teams: one per tier (Tier 2 → 2, Tier 3 → 3).
+ * Local solo mode (no API key, no SSO, you are signed in as your OS user): there is only one human,
+ * so every reviewed action needs exactly one review. Higher tiers still get longer minimum times
+ * and harder checks; a second made-up name would only fake separation of duties.
+ */
+export function approversFor(tier: Tier): number {
+  if (tier === 0) return 0;
+  // LITTI_SOLO=false keeps team quorums on a local install (e.g. a pair sharing one machine).
+  return localMode() && process.env.LITTI_SOLO !== 'false' ? 1 : tier;
+}
+
 export function registerPending(card: ActionCard, baseUrl: string, source: ActionSource = 'api'): { id: string; url: string; tier: Tier } {
   const { assessment } = gatekeep(card);
   const bump = assessment.tier === 0 ? 0 : takeTierBump();
   const tier = Math.min(assessment.tier + bump, 3) as Tier;
   const reasons = bump ? [...assessment.reasons, 'Tier +1: previous review was rubber-stamped'] : assessment.reasons;
-  const requiredApprovers = tier === 0 ? 0 : tier === 1 ? 1 : tier === 2 ? 2 : 3;
+  const requiredApprovers = approversFor(tier);
 
   // Vary the comprehension check per action: quiz sometimes, other challenges the rest.
   const challenge = chooseChallenge(card, tier, { lastKind: getSetting('last_challenge_kind') });
@@ -445,7 +457,7 @@ export function buildServer(opts: { logger?: boolean } = {}): FastifyInstance {
       appendReceipt({ actionCard: card, tier, approvals: [], outcome: 'auto-approved', attentionScore: 100 });
       return { ok: true, id, tier, status: 'approved', token };
     }
-    return { ok: true, id, tier, status: 'pending', approvalUrl: url, requiredApprovers: tier === 1 ? 1 : tier === 2 ? 2 : 3 };
+    return { ok: true, id, tier, status: 'pending', approvalUrl: url, requiredApprovers: approversFor(tier) };
   });
 
   // Agent hooks (Claude Code, Codex, OpenCode): may this risky command run now?
@@ -512,7 +524,7 @@ export function buildServer(opts: { logger?: boolean } = {}): FastifyInstance {
       appendReceipt({ actionCard: card, tier, approvals: [], outcome: 'auto-approved', attentionScore: 100 });
       return { ok: true, decision: 'allow', id, tier, message: '✅ Litti: Tier 0, allowed.' };
     }
-    const required = tier === 1 ? 1 : tier === 2 ? 2 : 3;
+    const required = approversFor(tier);
     return { ok: true, decision: 'deny', id, tier, approvalUrl: url, message: denyMsg({ id, tier, requiredApprovers: required, approvals: 0 }, url, true) };
   });
 

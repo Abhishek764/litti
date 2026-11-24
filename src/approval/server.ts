@@ -236,10 +236,27 @@ export function hostAllowed(hostHeader: unknown, env = process.env): boolean {
   return false;
 }
 
+/**
+ * Pass to `app.listen()`: Fastify would otherwise log every interface address of the machine
+ * (including local-network IPs when listening on 0.0.0.0). Log the port only.
+ */
+export const listenTextResolver = (address: string): string => {
+  try { return `Litti listening on port ${new URL(address).port}`; } catch { return 'Litti listening'; }
+};
+
 /** Build the Fastify app with all routes. */
 export function buildServer(opts: { logger?: boolean } = {}): FastifyInstance {
   const app = Fastify({
-    logger: opts.logger ? { level: process.env.LOG_LEVEL || 'info' } : false,
+    // Request logs never contain the client's IP address, port or host, nor the query string
+    // (review links carry signed tickets in `?t=`). The IP is only used in memory for the
+    // "same computer?" check and is never stored.
+    logger: opts.logger ? {
+      level: process.env.LOG_LEVEL || 'info',
+      base: null, // no machine hostname or pid on every line
+      serializers: {
+        req: (req: { method?: string; url?: string; id?: string }) => ({ id: req.id, method: req.method, url: String(req.url ?? '').split('?')[0] }),
+      },
+    } : false,
     bodyLimit: MAX_DIFF_BYTES + 64 * 1024,
     trustProxy: process.env.TRUST_PROXY === 'true',
   });

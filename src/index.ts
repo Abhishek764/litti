@@ -5,7 +5,7 @@ import open from 'open';
 // The installed `litti` command reads ~/.litti/config.env instead of the current folder's .env.
 if (!process.env.LITTI_SKIP_CWD_ENV) dotenv.config();
 import { initDb, closeDb } from './chain/db.js';
-import { buildServer, setNotifier } from './approval/server.js';
+import { buildServer, setNotifier, listenTextResolver } from './approval/server.js';
 import { multiNotifier, notifierFromEnv } from './notify/index.js';
 import { liveConnectedNotifier } from './connect/notifier.js';
 import { checkProductionConfig } from './config.js';
@@ -29,7 +29,7 @@ async function main() {
 
   const app = buildServer({ logger: process.env.LITTI_OPEN ? false : true });
   try {
-    await app.listen({ port: PORT, host: HOST });
+    await app.listen({ port: PORT, host: HOST, listenTextResolver });
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'EADDRINUSE') {
       console.error(`❌ Port ${PORT} is already in use. Is Litti already running? Open ${BASE}/ or start on another port: litti start --port ${PORT >= 65535 ? PORT - 1 : PORT + 1}`);

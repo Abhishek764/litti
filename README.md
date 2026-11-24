@@ -49,6 +49,26 @@ Approvals are bound to the exact diff, used once, and chained into receipts anyo
 </tr>
 </table>
 
+## See it working
+
+Real screens from `litti demo`, not mock-ups.
+
+**1. Your agent asks; Litti queues it by risk.** Nothing here has run yet.
+
+<img src="https://raw.githubusercontent.com/Abhishek764/litti/main/docs/screenshots/inbox.png" alt="Review inbox: a Tier 1 edit, a Tier 2 migration and a Tier 3 deploy waiting for review" width="860">
+
+**2. The reviewer reads the diff and proves it.** Here: "Click the line that deletes files from disk." Clicking anywhere else fails the check.
+
+<img src="https://raw.githubusercontent.com/Abhishek764/litti/main/docs/screenshots/review.png" alt="Review page for a Tier 3 deploy: the diff, a spot-the-line check and the countersign form" width="860">
+
+**3. Right line, minimum reading time met: the deploy runs.**
+
+<img src="https://raw.githubusercontent.com/Abhishek764/litti/main/docs/screenshots/approved.png" alt="The correct line is selected, the reviewer countersigns and the deploy runs" width="860">
+
+**4. Every decision becomes a hash-chained receipt** with an attention score per reviewer. Edit one row and **Verify Chain** fails.
+
+<img src="https://raw.githubusercontent.com/Abhishek764/litti/main/docs/screenshots/dashboard.png" alt="Receipt dashboard: an approved Tier 3 action, attention score 100/100, chain intact" width="860">
+
 ---
 
 ## Quick start

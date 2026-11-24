@@ -44,7 +44,7 @@ a{color:var(--blue)}
 <header><a href="/"><img src="/brand/litti-logo.svg" alt="Litti"></a><nav><a href="/">Inbox</a><a href="/changes">Changes</a><a href="/integrations" style="color:var(--text)">Integrations</a><a href="/dashboard.html">Dashboard</a><a href="/docs">Docs</a></nav></header>
 <div class="wrap">
 <h1>Integrations</h1>
-<p class="sub">Connect where your team hears about approvals. Reviewers still approve on the Litti review page, never in chat. Only metadata is sent; your code never leaves this server.</p>
+<p class="sub">Connect where your team hears about approvals. Reviewers still approve on the Litti review page, never in chat. They receive the description, command, file names and risk reasons; diffs stay on this server.</p>
 <div class="banner" id="banner"></div>
 <div id="cards">Loading…</div>
 </div>
@@ -89,7 +89,7 @@ function slackGuide(s,info){
     li(['On the app’s Basic Information page, copy Client ID and Client Secret here:']),
   );
   st.append(ol,appForm('slack',s));
-  if(!info.https)st.append(el('div','warn','Slack only sends people back to https addresses. Run Litti behind https (set PUBLIC_URL), or use the quick option below for now.'));
+  if(!info.https)st.append(el('div','warn','Slack only sends people back to https addresses. Run Litti behind https (set PUBLIC_URL), or use “Paste a Slack webhook link” instead.'));
   const r=el('div','row');r.append(connectBtn('slack',s),el('span','facts','You’ll pick the channel on Slack’s page.'));st.append(r);d.append(st);return d;
 }
 function discordGuide(s,info){
@@ -145,7 +145,7 @@ function card(p,s,info){
   if(s.connected){
     const d=s.details||{};const f=el('div','facts');
     const add=(k,v)=>{if(v){f.append(el('b','',k+': '),document.createTextNode(String(v)+'   '));}};
-    add('How',d.how);add('Workspace',d.team);add('Channel',d.channel?'#'+d.channel:null);add('Server',d.server);add('Site',d.site);add('Project',d.projectKey?(d.projectName||d.projectKey)+' ('+d.projectKey+')':null);
+    add('How',d.how);add('Workspace',d.team);add('Channel',d.channel?'#'+d.channel:null);add('Server',d.server);add('Webhook',d.webhook);add('Site',d.site);add('Project',d.projectKey?(d.projectName||d.projectKey)+' ('+d.projectKey+')':null);
     add('Connected by',d.connectedBy);c.append(f);
     if(p==='jira')jiraProjectPicker(s,c);
     const r=el('div','row');const t=el('button','','Send test');const x=el('button','danger','Disconnect');const m=msgLine();

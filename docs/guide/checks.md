@@ -18,7 +18,7 @@ Questions come from the changed lines, never from unchanged context. Wrong optio
 ## How Litti picks
 
 - A random pick weighted by kind. The quiz comes up about 30% of the time.
-- **Never the same kind twice in a row.**
+- **Usually a different kind each time.** The previous kind is skipped when another one fits the diff; if none does, it falls back to the quiz.
 - **Tier 2 and 3 never use Canary or Count**, because those can be guessed (yes/no) or are tedious rather than informative.
 - If a diff has nothing to ask about for a kind (for example no function to recall), that kind is skipped.
 

@@ -60,12 +60,10 @@ export function getAppCreds(p: Provider, env = process.env): (AppCreds & { sourc
   return saved ? { ...saved, source: 'saved' } : null;
 }
 export const saveAppCreds = (p: Provider, c: AppCreds) => putSealed(`connect:app:${p}`, c);
-export const deleteAppCreds = (p: Provider) => remove(`connect:app:${p}`);
-export const envVarsFor = (p: Provider) => ENV_APP[p];
 
 /** A live connection. */
 export interface SlackConn { kind: 'oauth' | 'webhook'; token?: string; channelId?: string; channelName?: string; team?: string; webhookUrl?: string }
-export interface DiscordConn { webhookUrl: string; channelId?: string; guildName?: string; via: 'oauth' | 'webhook' }
+export interface DiscordConn { webhookUrl: string; channelId?: string; guildName?: string; webhookName?: string; via: 'oauth' | 'webhook' }
 export interface JiraConn {
   cloudId: string; siteUrl: string; siteName: string;
   accessToken: string; refreshToken?: string; expiresAt: number;

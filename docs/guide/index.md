@@ -30,7 +30,7 @@ Every decision is chained into a hash-linked receipt log. `litti verify` tells y
 - Hooks for **Claude Code**, **Codex** and **OpenCode** that block risky commands until they're reviewed
 - **Connect** buttons for Slack, Discord and Jira
 - A `litti` command line and an HTTP API for any other agent or pipeline
-- One Node process and a SQLite file. Your code never leaves your server.
+- One Node process and a SQLite file. Diffs never leave your server; notifications carry only the description, command, file names and risk reasons.
 
 ## Where to start
 

@@ -33,6 +33,17 @@ async function json(url: string, init: RequestInit): Promise<{ ok: boolean; stat
 }
 const form = (o: Record<string, string>) => ({ method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' }, body: new URLSearchParams(o).toString() });
 
+/**
+ * Names Discord returns for a `webhook.incoming` grant. The token response has no `guild`
+ * object (only `webhook.guild_id`), so the server name is usually unknown; the webhook's own
+ * name is what the user picked. Both are kept only when present.
+ */
+export function discordNames(body: any): { guildName?: string; webhookName?: string } {
+  const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, 100) : undefined);
+  const guildName = str(body?.guild?.name), webhookName = str(body?.webhook?.name);
+  return { ...(guildName ? { guildName } : {}), ...(webhookName ? { webhookName } : {}) };
+}
+
 /** Turn the provider's `code` into a stored connection. Throws a user-readable Error on failure. */
 export async function exchange(p: Provider, code: string, redirectUri: string, appCreds?: AppCreds | null): Promise<SlackConn | DiscordConn | JiraConn> {
   const app = appCreds ?? getAppCreds(p);
@@ -52,7 +63,7 @@ export async function exchange(p: Provider, code: string, redirectUri: string, a
     const r = await json('https://discord.com/api/oauth2/token', form({ grant_type: 'authorization_code', code, redirect_uri: redirectUri, client_id: app.clientId, client_secret: app.clientSecret }));
     const url = r.body?.webhook?.url ?? (r.body?.webhook?.id && r.body?.webhook?.token ? `https://discord.com/api/webhooks/${r.body.webhook.id}/${r.body.webhook.token}` : '');
     if (!r.ok || !isDiscordWebhook(url)) throw new Error(`Discord said: ${String(r.body?.error_description ?? r.body?.error ?? `HTTP ${r.status}`).slice(0, 80)}`);
-    return { webhookUrl: url, channelId: r.body.webhook.channel_id, guildName: r.body.guild?.name, via: 'oauth' };
+    return { webhookUrl: url, channelId: r.body.webhook.channel_id, ...discordNames(r.body), via: 'oauth' };
   }
 
   const t = await json('https://auth.atlassian.com/oauth/token', {

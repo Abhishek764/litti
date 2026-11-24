@@ -4,7 +4,6 @@ dist/
 *.db
 *.db-shm
 *.db-wal
-deployed-*.txt
 .DS_Store
 data/
 deployments/

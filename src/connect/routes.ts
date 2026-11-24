@@ -12,13 +12,13 @@
  *   GET  /api/integrations/jira/projects       project picker
  *   POST /api/integrations/jira/settings       {projectKey, minTier, doneTransition}
  *
- * Only admins: locally (no LITTI_API_KEY) anyone at the machine; in production, people
+ * Only admins: locally (no LITTI_API_KEY / LITTI_API_KEYS) anyone at the machine; in production, people
  * listed in LITTI_ADMINS, identified by your SSO header (LITTI_IDENTITY_HEADER).
  * Browser writes need the x-litti-ui header (CSRF guard).
  */
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import { isDiscordWebhook, discordNotifier } from '../notify/discord.js';
-import { webhookNotifier } from '../notify/index.js';
+import { isDiscordWebhook } from '../notify/discord.js';
+import { sendJson } from '../notify/http.js';
 import { PROVIDERS, consumeState, deleteConnection, getAppCreds, getConnection, issueState, saveAppCreds, saveConnection, updateConnection, type Provider } from './store.js';
 import { authorizeUrl, exchange, jiraApiBase, jiraAuthHeader, jiraProjects } from './providers.js';
 import { renderIntegrationsPage } from './page.js';
@@ -34,9 +34,13 @@ export function adminIdentity(headers: Headers, env = process.env): { ok: true; 
     if (!admins.includes(who.toLowerCase())) return { ok: false, why: `${who} is not in LITTI_ADMINS.` };
     return { ok: true, name: who };
   }
-  if (env.LITTI_API_KEY) return { ok: false, why: 'Production mode: set LITTI_IDENTITY_HEADER and LITTI_ADMINS to manage integrations.' };
+  if (env.LITTI_API_KEY || env.LITTI_API_KEYS) return { ok: false, why: 'Production mode: set LITTI_IDENTITY_HEADER and LITTI_ADMINS to manage integrations.' };
   return { ok: true, name: 'local admin' };
 }
+
+/** A failed Send test says what went wrong; it never claims success. */
+const sendFailed = (name: string, status: number) =>
+  `${name} did not accept the message (${status ? `HTTP ${status}` : 'no answer'}). The webhook may have been deleted: paste a new link or reconnect.`;
 
 const isProvider = (p: string): p is Provider => (PROVIDERS as string[]).includes(p);
 const NAMES: Record<Provider, string> = { slack: 'Slack', discord: 'Discord', jira: 'Jira' };
@@ -77,7 +81,7 @@ export function validateBrokerConn(p: Provider, c: any): Record<string, unknown>
   if (p === 'discord') {
     const url = s(c.webhookUrl);
     if (!url || !isDiscordWebhook(url)) return null;
-    return { webhookUrl: url, channelId: s(c.channelId, 40), guildName: s(c.guildName, 100), via: 'oauth' };
+    return { webhookUrl: url, channelId: s(c.channelId, 40), guildName: s(c.guildName, 100), webhookName: s(c.webhookName, 100), via: 'oauth' };
   }
   const cloudId = s(c.cloudId, 100), siteUrl = s(c.siteUrl, 300), accessToken = s(c.accessToken, 5000);
   if (!cloudId || !accessToken || !siteUrl?.startsWith('https://')) return null;
@@ -95,7 +99,7 @@ function status(p: Provider) {
   let details: Record<string, unknown> | null = null;
   if (c) {
     if (p === 'slack') details = { how: c.kind === 'oauth' ? 'Slack app' : 'Pasted webhook link', team: c.team ?? null, channel: c.channelName ?? null };
-    if (p === 'discord') details = { how: c.via === 'oauth' ? 'Discord sign-in' : 'Pasted webhook link', server: c.guildName ?? null };
+    if (p === 'discord') details = { how: c.via === 'oauth' ? 'Discord sign-in' : 'Pasted webhook link', server: c.guildName ?? null, webhook: c.webhookName ?? null };
     if (p === 'jira') details = { site: c.siteName, siteUrl: c.siteUrl, projectKey: c.projectKey ?? null, projectName: c.projectName ?? null, minTier: c.minTier ?? 2, doneTransition: c.doneTransition ?? '' };
     details = { ...details, connectedAt: c.connectedAt, connectedBy: c.connectedBy };
   }
@@ -233,14 +237,15 @@ export function registerConnectRoutes(app: FastifyInstance): void {
         const r = await fetch('https://slack.com/api/chat.postMessage', { method: 'POST', headers: { 'content-type': 'application/json; charset=utf-8', authorization: `Bearer ${c.token}` }, body: JSON.stringify({ channel: c.channelId, text: msg }), signal: AbortSignal.timeout(10000) }).then(r => r.json()).catch(() => null) as any;
         return r?.ok ? { ok: true, message: `Sent to #${c.channelName ?? 'channel'}.` } : reply.code(502).send({ ok: false, message: `Slack said: ${String(r?.error ?? 'no answer').slice(0, 60)}` });
       }
-      await webhookNotifier(c.webhookUrl!).postMessage(msg);
-      return { ok: true, message: 'Sent. Check your Slack channel.' };
+      if (!c.webhookUrl) return reply.code(409).send({ ok: false, message: 'Slack is not connected.' });
+      const r = await sendJson('Slack', fetch, 'POST', c.webhookUrl, { text: msg });
+      return r.ok ? { ok: true, message: 'Sent. Check your Slack channel.' } : reply.code(502).send({ ok: false, message: sendFailed('Slack', r.status) });
     }
     if (p === 'discord') {
       const c = getConnection('discord');
       if (!c) return reply.code(409).send({ ok: false, message: 'Discord is not connected.' });
-      await discordNotifier({ webhookUrl: c.webhookUrl }).postMessage(msg);
-      return { ok: true, message: 'Sent. Check your Discord channel.' };
+      const r = await sendJson('Discord', fetch, 'POST', c.webhookUrl.split('?')[0], { username: 'Litti', content: msg, allowed_mentions: { parse: [] } });
+      return r.ok ? { ok: true, message: 'Sent. Check your Discord channel.' } : reply.code(502).send({ ok: false, message: sendFailed('Discord', r.status) });
     }
     if (p === 'jira') {
       const c = getConnection('jira');

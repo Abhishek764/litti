@@ -54,6 +54,7 @@ try {
   await step('admin guard: local open; production needs SSO + LITTI_ADMINS', () => {
     assert.equal(adminIdentity({}, {}).ok, true);
     assert.equal(adminIdentity({}, { LITTI_API_KEY: 'k' }).ok, false);
+    assert.equal(adminIdentity({}, { LITTI_API_KEYS: 'ci-bot:k1' }).ok, false, 'labelled agent keys are team mode too');
     const env = { LITTI_API_KEY: 'k', LITTI_IDENTITY_HEADER: 'x-email', LITTI_ADMINS: 'boss@acme.test' };
     assert.equal(adminIdentity({ 'x-email': 'dev@acme.test' }, env).ok, false);
     assert.equal(adminIdentity({ 'x-email': 'Boss@acme.test' }, env).ok, true);
@@ -171,6 +172,43 @@ try {
       await n.postCard({ ...card, id: 'act_2' }, { tier: 3, reasons: [], requiredApprovers: 3 }, 'https://x');
       assert.equal(hits.length, 0, 'nothing sent after disconnect');
     } finally { globalThis.fetch = realFetch; }
+  });
+
+  await step('Send test reports a dead Slack or Discord webhook as a failure, never "Sent"', async () => {
+    const realFetch = globalThis.fetch;
+    let status = 404;
+    globalThis.fetch = (async () => new Response(status === 204 ? null : 'no_service', { status })) as typeof fetch;
+    try {
+      assert.equal((await app.inject({ method: 'POST', url: '/api/integrations/slack/webhook', headers: ui, payload: { url: 'https://hooks.slack.com/services/T/B/dead' } })).statusCode, 200);
+      assert.equal((await app.inject({ method: 'POST', url: '/api/integrations/discord/webhook', headers: ui, payload: { url: 'https://discord.com/api/webhooks/333/dead' } })).statusCode, 200);
+      for (const p of ['slack', 'discord']) {
+        status = 404;
+        const dead = await app.inject({ method: 'POST', url: `/api/integrations/${p}/test`, headers: ui });
+        assert.equal(dead.statusCode, 502, `${p}: a 404 from the webhook is a failure`);
+        assert.equal(dead.json().ok, false);
+        assert.doesNotMatch(dead.json().message, /Sent/);
+        assert.match(dead.json().message, /HTTP 404/);
+        status = 204;
+        const live = await app.inject({ method: 'POST', url: `/api/integrations/${p}/test`, headers: ui });
+        assert.equal(live.statusCode, 200, `${p}: 2xx is success`);
+        assert.match(live.json().message, /Sent/);
+      }
+      globalThis.fetch = (async () => { throw new TypeError('fetch failed'); }) as typeof fetch;
+      const down = await app.inject({ method: 'POST', url: '/api/integrations/discord/test', headers: ui });
+      assert.equal(down.statusCode, 502);
+      assert.match(down.json().message, /no answer/);
+    } finally { globalThis.fetch = realFetch; }
+  });
+
+  await step('Discord OAuth: the real token response (no guild object) shows the webhook name, not an empty server', async () => {
+    replies = { 'https://discord.com/api/oauth2/token': { access_token: 'a', webhook: { id: '444', token: 't', name: 'Litti reviews', guild_id: '55', channel_id: '9', url: 'https://discord.com/api/webhooks/444/t' } } };
+    const loc = (await app.inject({ method: 'GET', url: '/connect/discord' })).headers.location as string;
+    await app.inject({ method: 'GET', url: `/connect/discord/callback?code=c&state=${encodeURIComponent(stateFrom(loc))}` });
+    const d = (await app.inject({ method: 'GET', url: '/api/integrations' })).json().providers.discord.details;
+    assert.equal(d.webhook, 'Litti reviews');
+    assert.equal(d.server, null);
+    assert.equal(d.how, 'Discord sign-in');
+    await app.inject({ method: 'POST', url: '/api/integrations/discord/disconnect', headers: ui });
   });
 
   await step('production without admin identity: page and API refuse', async () => {

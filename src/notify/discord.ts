@@ -44,7 +44,7 @@ export function discordEmbed(card: ActionCard, ref: Omit<DiscordRef, 'messageId'
     url: ref.url,
     description: final
       ? clip(`Reviewed by ${final.approvers.join(', ')}${final.attentionScore !== undefined ? ` · attention ${final.attentionScore}/100` : ''}`, 4096)
-      : `**${TIER_LABEL[ref.tier] ?? `Tier ${ref.tier}`}** — [Review in Litti](${ref.url}). Nothing runs until ${ref.required} reviewer(s) pass the quiz.`,
+      : `**${TIER_LABEL[ref.tier] ?? `Tier ${ref.tier}`}** — [Review in Litti](${ref.url}). Nothing runs until ${ref.required} reviewer(s) pass the comprehension check.`,
     color: final ? EVENT_COLOR[final.kind] : TIER_COLOR[ref.tier] ?? 0xe74c3c,
     fields: [
       { name: 'Action', value: clip(`${card.action} by ${oneLine(card.agent, 80)}`, 1024), inline: true },

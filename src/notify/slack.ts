@@ -7,7 +7,7 @@
  *  - When the action closes, the card is edited in place: button removed, status shown.
  *
  * Approving inside Slack is deliberately impossible: the button opens the review page,
- * where the quiz, timer and scroll checks run. Only metadata is sent — never the diff.
+ * where the comprehension check, timer and scroll checks run. Only metadata is sent — never the diff.
  *
  * Needs a Slack app with the `chat:write` scope, invited to the channel.
  */
@@ -54,7 +54,7 @@ export function slackBlocks(card: ActionCard, ref: Omit<SlackRef, 'channel' | 't
       elements: [{ type: 'button', action_id: 'litti_review', style: 'primary', text: { type: 'plain_text', text: 'Review in Litti' }, url: ref.url }],
     });
   }
-  blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: `Action \`${slackEscape(card.id)}\` · nothing runs until ${ref.required} reviewer(s) pass the quiz` }] });
+  blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: `Action \`${slackEscape(card.id)}\` · nothing runs until ${ref.required} reviewer(s) pass the comprehension check` }] });
   return blocks;
 }
 

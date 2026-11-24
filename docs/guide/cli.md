@@ -2,7 +2,7 @@
 
 Run `litti` with no command to start the server. Every other command talks to a running Litti server, from any folder.
 
-It finds the server through `LITTI_URL` (default `http://127.0.0.1:3847`) and sends `LITTI_API_KEY` / `LITTI_ADMIN_KEY` from your environment or `~/.litti/config.env`.
+It finds the server through `LITTI_URL` (default `http://127.0.0.1:<APPROVAL_SERVER_PORT>`, so 3847 unless you changed the port in `~/.litti/config.env`) and sends `LITTI_API_KEY` / `LITTI_ADMIN_KEY` from your environment or `~/.litti/config.env`. Agents are not allowed to run `litti review`: the hook denies it.
 
 ## Run Litti
 
@@ -22,7 +22,7 @@ It finds the server through `LITTI_URL` (default `http://127.0.0.1:3847`) and se
 | `propose <file.json \| ->` | Ask for approval. JSON fields: `action`, `description`, `diff`, `touchedPaths[]`, optional `agent`, `reversible`, `rollbackPlan` |
 | `status <id>` | Approved yet? Prints the signed token once approved |
 | `pending` | Actions waiting for reviewers |
-| `review <id> --as <name>` | Personal, signed review link for one reviewer (valid 30 minutes). Needs the admin key if one is set |
+| `review <id> --as <name>` | Personal, signed review link for one reviewer (valid 30 minutes). Needs `LITTI_ADMIN_KEY` (in `~/.litti/config.env` for the installed `litti`). For teams; solo reviewers are signed in as their OS user |
 
 ```bash
 echo '{"action":"migrate","description":"Add index","diff":"+CREATE INDEX i ON users(email);","touchedPaths":["migrations/9.sql"]}' \

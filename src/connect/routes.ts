@@ -12,7 +12,7 @@
  *   GET  /api/integrations/jira/projects       project picker
  *   POST /api/integrations/jira/settings       {projectKey, minTier, doneTransition}
  *
- * Only admins: locally (no LITTI_API_KEY) anyone at the machine; in production, people
+ * Only admins: locally (no LITTI_API_KEY / LITTI_API_KEYS) anyone at the machine; in production, people
  * listed in LITTI_ADMINS, identified by your SSO header (LITTI_IDENTITY_HEADER).
  * Browser writes need the x-litti-ui header (CSRF guard).
  */
@@ -34,7 +34,7 @@ export function adminIdentity(headers: Headers, env = process.env): { ok: true; 
     if (!admins.includes(who.toLowerCase())) return { ok: false, why: `${who} is not in LITTI_ADMINS.` };
     return { ok: true, name: who };
   }
-  if (env.LITTI_API_KEY) return { ok: false, why: 'Production mode: set LITTI_IDENTITY_HEADER and LITTI_ADMINS to manage integrations.' };
+  if (env.LITTI_API_KEY || env.LITTI_API_KEYS) return { ok: false, why: 'Production mode: set LITTI_IDENTITY_HEADER and LITTI_ADMINS to manage integrations.' };
   return { ok: true, name: 'local admin' };
 }
 

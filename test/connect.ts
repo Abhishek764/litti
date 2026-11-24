@@ -54,6 +54,7 @@ try {
   await step('admin guard: local open; production needs SSO + LITTI_ADMINS', () => {
     assert.equal(adminIdentity({}, {}).ok, true);
     assert.equal(adminIdentity({}, { LITTI_API_KEY: 'k' }).ok, false);
+    assert.equal(adminIdentity({}, { LITTI_API_KEYS: 'ci-bot:k1' }).ok, false, 'labelled agent keys are team mode too');
     const env = { LITTI_API_KEY: 'k', LITTI_IDENTITY_HEADER: 'x-email', LITTI_ADMINS: 'boss@acme.test' };
     assert.equal(adminIdentity({ 'x-email': 'dev@acme.test' }, env).ok, false);
     assert.equal(adminIdentity({ 'x-email': 'Boss@acme.test' }, env).ok, true);

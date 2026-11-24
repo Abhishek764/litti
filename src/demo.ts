@@ -107,7 +107,7 @@ async function main() {
 
   console.log(`\n📥 Inbox:     ${BASE}/`);
   console.log(`📊 Dashboard: ${BASE}/dashboard.html`);
-  console.log('\n👉 Open an approval link, read the diff, pass the quiz, Countersign.');
+  console.log('\n👉 Open an approval link, read the diff, pass the check, Countersign.');
   console.log('   Approved actions deploy and appear on the dashboard.');
   console.log('   In another terminal, try: litti pending\n');
   if (!process.argv.includes("--no-open")) {

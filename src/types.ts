@@ -11,7 +11,10 @@ export type ActionKind =
 /** A proposed action posted by the builder agent. */
 export interface ActionCard {
   id: string;
+  /** Requester. With labelled API keys (LITTI_API_KEYS) this is the key's label, never free text. */
   agent: string;
+  /** The free-text agent name the caller sent, when it differs from the key label. Display only. */
+  agentDetail?: string;
   action: ActionKind;
   description: string;
   diff: string;
@@ -54,8 +57,10 @@ export interface ApprovalSubmission {
   timeSpentMs: number;
   scrolledToBottom: boolean;
   timestamp: string;
-  /** How the reviewer was identified: SSO header, signed review link, or typed name. */
-  identitySource?: 'sso' | 'ticket' | 'self-asserted';
+  /** How the reviewer was identified: SSO header, signed review link, typed name, or local OS user. */
+  identitySource?: 'sso' | 'ticket' | 'self-asserted' | 'local';
+  /** Normalised reviewer key (see reviewerKey): one person counts once, however the name is spelled. */
+  reviewerId?: string;
 }
 
 /** Per-approver quiz result embedded in a token. */
@@ -113,7 +118,8 @@ export interface PendingAction {
   quiz: Quiz;
   quizAnswer: string;
   /** deploy-failed: approved by reviewers, but the executor could not deliver it (retry it). */
-  status: 'pending' | 'approved' | 'rejected' | 'deploy-failed';
+  /** superseded: a newer gate request for the same command and repository replaced it. */
+  status: 'pending' | 'approved' | 'rejected' | 'deploy-failed' | 'superseded';
   createdAt: string;
   /** Who created it: the agent hook gate, the agent API, or the Changes page. Older rows: unknown. */
   source?: ActionSource;

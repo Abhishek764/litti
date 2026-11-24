@@ -24,12 +24,14 @@ export function checkProductionConfig(env = process.env): StartupCheck {
   // Listening only on this machine (the default) is a personal setup: no key needed, no warning.
   const localOnly = ['127.0.0.1', 'localhost', '::1'].includes(env.HOST || '127.0.0.1');
   // Team mode posts review links to Slack/Jira/agents: they must never be built from a request's Host header.
-  if (env.LITTI_API_KEY && !env.PUBLIC_URL) {
+  const teamKey = env.LITTI_API_KEY || env.LITTI_API_KEYS;
+  if (teamKey && !env.PUBLIC_URL) {
     errors.push('PUBLIC_URL is required when LITTI_API_KEY is set (team mode), e.g. PUBLIC_URL=https://litti.yourco.com. Review links are built from it, never from the request\'s Host header.');
   }
-  if (!env.LITTI_API_KEY) {
-    if (!localOnly) warnings.push('LITTI_API_KEY is not set — anyone who can reach the server can submit actions.');
-  } else if (!env.LITTI_ADMIN_KEY) warnings.push('LITTI_ADMIN_KEY is not set — anyone with LITTI_API_KEY (including agents) can issue review links. Set a separate admin key.');
+  if (!teamKey) {
+    // Without an agent key the server trusts every caller: only acceptable on this machine.
+    if (!localOnly) errors.push(`HOST=${env.HOST} makes Litti reachable from the network, but neither LITTI_API_KEY nor LITTI_API_KEYS is set, so anyone who can reach it could submit and approve actions. Set LITTI_API_KEY (and PUBLIC_URL), or listen on HOST=127.0.0.1.`);
+  } else if (!env.LITTI_ADMIN_KEY) warnings.push('LITTI_ADMIN_KEY is not set — personal review links (`litti review`) are disabled until you set one. Keep it away from agents.');
   if (env.LITTI_ALLOW_SELF_ASSERTED === 'true') warnings.push('LITTI_ALLOW_SELF_ASSERTED=true — reviewers can type any name. Use review links or LITTI_IDENTITY_HEADER in production.');
   if (env.LITTI_IDENTITY_HEADER && (env.HOST === '0.0.0.0' || env.HOST === '::')) {
     warnings.push(`LITTI_IDENTITY_HEADER is trusted — make sure only your auth proxy can reach port ${port}.`);

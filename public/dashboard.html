@@ -89,7 +89,7 @@ async function load(){
 
 function renderReceipts(list){
   const el=document.getElementById('receipts');
-  if(!list.length){el.innerHTML='<div class="empty">No receipts yet. Run the demo.</div>';return;}
+  if(!list.length){el.innerHTML='<div class="empty">No receipts yet. One appears here after each decision.</div>';return;}
   // An action can be retried only while its newest receipt is deploy-failed.
   const latest={};
   list.forEach((r,i)=>{const id=r.actionCard&&r.actionCard.id;if(!id)return;const prev=latest[id];if(prev===undefined||list[prev].timestamp<=r.timestamp)latest[id]=i;});

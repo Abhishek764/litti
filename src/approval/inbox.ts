@@ -63,7 +63,7 @@ export function renderInbox(all: PendingAction[], baseUrl: string, now = Date.no
   <p class="more"><a href="/changes">Changes view</a> shows everything your agent changed, reviewed or not · <a href="/integrations">Integrations</a> post new reviews to Slack, Discord or Jira.</p>` : `<div class="empty">✅ Nothing waiting for review.</div>
   <section class="welcome">
     <h2>Get started</h2>
-    <p>Three steps and your coding agent can't ship anything risky without a human who read it.</p>
+    <p>Three steps, and your coding agent's commits, pushes, deploys and destructive commands wait for a human review.</p>
     <div class="steps">
       <div class="step"><div><b>Put Claude Code behind Litti</b><span>In a new terminal, inside your project folder, run <code>litti install claude</code> and restart Claude Code. Also works with <code>codex</code> and <code>opencode</code>.</span></div></div>
       <div class="step"><div><b>Tell your team</b><span><a href="/integrations">Connect Slack, Discord or Jira</a>. Discord takes one minute.</span></div></div>

@@ -148,12 +148,19 @@ try {
     const mine = pending.find((p: any) => p.id === id);
     assert.ok(mine && mine.description === 'api proposal' && !('quizAnswer' in mine) && !('quiz' in mine));
 
-    const link = await app.inject({ method: 'POST', url: `/api/actions/${id}/review-link`, payload: { reviewer: 'priya' } });
-    assert.equal(link.statusCode, 200);
-    assert.match(link.json().url, new RegExp(`/approve/${id}\\?t=`));
-    assert.equal((await app.inject({ method: 'POST', url: `/api/actions/${id}/review-link`, payload: { reviewer: 'dev' } })).statusCode, 403);
-    assert.equal((await app.inject({ method: 'POST', url: `/api/actions/${id}/review-link`, payload: {} })).statusCode, 400);
-    assert.equal((await app.inject({ method: 'POST', url: '/api/actions/nope/review-link', payload: { reviewer: 'x' } })).statusCode, 404);
+    // Review links always need the admin key, local mode included (P0-5).
+    assert.equal((await app.inject({ method: 'POST', url: `/api/actions/${id}/review-link`, payload: { reviewer: 'priya' } })).statusCode, 401);
+    process.env.LITTI_ADMIN_KEY = 'smoke-admin';
+    const admin = { 'x-litti-admin-key': 'smoke-admin' };
+    try {
+      const link = await app.inject({ method: 'POST', url: `/api/actions/${id}/review-link`, headers: admin, payload: { reviewer: 'priya' } });
+      assert.equal(link.statusCode, 200);
+      assert.match(link.json().url, new RegExp(`/approve/${id}\\?t=`));
+      assert.equal((await app.inject({ method: 'POST', url: `/api/actions/${id}/review-link`, headers: admin, payload: { reviewer: 'dev' } })).statusCode, 403);
+      assert.equal((await app.inject({ method: 'POST', url: `/api/actions/${id}/review-link`, headers: admin, payload: { reviewer: 'D​eν' } })).statusCode, 403, 'look-alike of the requester');
+      assert.equal((await app.inject({ method: 'POST', url: `/api/actions/${id}/review-link`, headers: admin, payload: {} })).statusCode, 400);
+      assert.equal((await app.inject({ method: 'POST', url: '/api/actions/nope/review-link', headers: admin, payload: { reviewer: 'x' } })).statusCode, 404);
+    } finally { delete process.env.LITTI_ADMIN_KEY; }
 
     assert.equal((await app.inject({ method: 'GET', url: `/api/actions/${id}` })).json().status, 'pending');
     const inbox = await app.inject({ method: 'GET', url: '/' });

@@ -36,11 +36,49 @@ export interface Challenge { quiz: Quiz; answer: string }
 /** A changed line of the diff, numbered the way the review page numbers it (1-based). */
 interface Changed { n: number; sign: '+' | '-'; text: string }
 
+export type DiffLineKind = 'add' | 'del' | 'hunk' | 'meta' | 'ctx';
+
+/**
+ * Classify every line of a diff once, so the review page's colours and the challenges agree.
+ * A `+++`/`---` line is a file header only before a file's first `@@` (or right before a new
+ * `--- a` / `+++ b` / `@@` triple). Inside a hunk, `+++counter;` is an added `++counter;`.
+ * A diff with no `@@` at all (hand-written by an agent) uses the plain prefix rule.
+ */
+export function diffLineKinds(diff: string): DiffLineKind[] {
+  const lines = diff.split('\n');
+  const hasHunks = lines.some(l => l.startsWith('@@'));
+  const header = /^(\+\+\+|---)(\s|$)/;
+  let inHunk = false;
+  return lines.map((l, i) => {
+    if (l.startsWith('diff --git ')) { inHunk = false; return 'meta'; }
+    if (l.startsWith('@@')) { inHunk = true; return 'hunk'; }
+    if (!hasHunks) return header.test(l) ? 'meta' : l[0] === '+' ? 'add' : l[0] === '-' ? 'del' : 'ctx';
+    if (inHunk && l.startsWith('--- ') && lines[i + 1]?.startsWith('+++ ') && lines[i + 2]?.startsWith('@@')) inHunk = false;
+    if (!inHunk) return 'meta';
+    return l[0] === '+' ? 'add' : l[0] === '-' ? 'del' : 'ctx';
+  });
+}
+
 function changedLines(diff: string): Changed[] {
+  const kinds = diffLineKinds(diff);
   return diff.split('\n').flatMap((line, i) =>
-    /^[+-]/.test(line) && !/^(\+\+\+|---)(\s|$)/.test(line)
+    kinds[i] === 'add' || kinds[i] === 'del'
       ? [{ n: i + 1, sign: line[0] as '+' | '-', text: line.slice(1) }]
       : []);
+}
+
+/** NFKC, collapsed whitespace, lower case: how expected and typed answers are compared. */
+const flat = (s: string) => s.normalize('NFKC').replace(/\s+/g, ' ').trim().toLowerCase();
+
+/** One SQL identifier, possibly quoted ("x", `x`, [x]) and schema-qualified (a.b). */
+const PART = String.raw`(?:"[^"]+"|\`[^\`]+\`|\[[^\]]+\]|[^\s;(),"\`\[.]+)`;
+const QUALIFIED = String.raw`(${PART}(?:\.${PART})*)`;
+
+/** The full name and its last part, unquoted: `"public"."users"` → ['public.users', 'users']. */
+function tableNames(raw: string): string[] {
+  const parts = (raw.match(new RegExp(PART, 'g')) ?? []).map(p => flat(p.replace(/^["`\[]|["`\]]$/g, '')));
+  const full = parts.join('.');
+  return [...new Set([full, parts[parts.length - 1]].filter(Boolean))];
 }
 
 /** A concrete fact the diff states, with the line(s) that state it. */
@@ -59,10 +97,10 @@ function facts(diff: string): Fact[] {
   const note = (cat: string, v: string) => { const s = values.get(cat) ?? new Set(); s.add(v); values.set(cat, s); };
 
   for (const c of ch) {
-    const drop = c.text.match(/DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?[`"]?(\w+)/i);
-    if (drop) { add('drop', drop[1], c.n, 'Click the line that permanently deletes data.', 'Type the name of the table this change drops.'); note('drop', drop[1]); continue; }
-    const table = c.text.match(/(?:ALTER|CREATE)\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?[`"]?(\w+)/i);
-    if (table) { add('table', table[1], c.n, 'Click the line that creates or alters a table.', 'Type the name of the table this migration changes.'); note('table', table[1]); continue; }
+    const drop = c.text.match(new RegExp(String.raw`DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?` + QUALIFIED, 'i'));
+    if (drop) { const names = tableNames(drop[1]); add('drop', names[0], c.n, 'Click the line that permanently deletes data.', 'Type the name of the table this change drops.'); names.forEach(n => note('drop', n)); continue; }
+    const table = c.text.match(new RegExp(String.raw`(?:ALTER|CREATE)\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?` + QUALIFIED, 'i'));
+    if (table) { const names = tableNames(table[1]); add('table', names[0], c.n, 'Click the line that creates or alters a table.', 'Type the name of the table this migration changes.'); names.forEach(n => note('table', n)); continue; }
     const rm = c.text.match(/rm\s+-rf\s+(\S+)/);
     if (rm) { add('rm', rm[1], c.n, 'Click the line that deletes files from disk.', 'Type the path this change deletes with rm -rf.'); note('rm', rm[1]); continue; }
     const route = c.text.match(/\.(?:get|post|put|patch|delete)\(\s*['"`]([^'"`]+)['"`]/i);
@@ -78,8 +116,8 @@ function facts(diff: string): Fact[] {
     const m = del.text.match(/^\s*([a-z-]+)\s*:\s*([^;]+);/);
     if (!m) continue;
     const plus = ch.find(c => c.sign === '+' && new RegExp(`^\\s*${m[1]}\\s*:`).test(c.text));
-    const next = plus?.text.match(/:\s*([^;]+);/)?.[1].trim();
-    if (plus && next && next !== m[2].trim()) {
+    const next = plus?.text.match(/:\s*([^;]+);/)?.[1].replace(/\s+/g, ' ').trim();
+    if (plus && next && next !== m[2].replace(/\s+/g, ' ').trim()) {
       add(`prop:${m[1]}`, next, plus.n, `Click the line that sets the new value of "${m[1]}".`, `Type the new value of "${m[1]}".`);
       note(`prop:${m[1]}`, next);
     }
@@ -92,7 +130,7 @@ const STOP = new Set(('const let var function return true false null undefined t
   + 'select into values table create alter drop insert update delete string number void async await new public private static each have will '
   + 'diff file line lines index exists not and the for http https').split(' '));
 
-/** Words a summary can use to show it names the actual change. */
+/** Words from the changed lines (not file names) a summary can use to show it names the change. */
 export function keywords(card: ActionCard): string[] {
   const out = new Set<string>();
   for (const c of changedLines(card.diff)) {
@@ -100,10 +138,6 @@ export function keywords(card: ActionCard): string[] {
       const lw = w.toLowerCase();
       if (!STOP.has(lw)) out.add(lw);
     }
-  }
-  for (const p of card.touchedPaths) {
-    const base = p.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, '').toLowerCase();
-    if (base && base.length >= 3) out.add(base);
   }
   return [...out].slice(0, 60);
 }
@@ -156,7 +190,7 @@ export function buildChallenge(kind: ChallengeKind, card: ActionCard): Challenge
       const fs = facts(diff);
       if (!fs.length) return null;
       const f = pick(fs);
-      return { quiz: { kind, question: f.type, options: [], correctIndex: -1 }, answer: f.value.toLowerCase() };
+      return { quiz: { kind, question: f.type, options: [], correctIndex: -1 }, answer: f.value.split('|').map(flat).join('|') };
     }
     case 'canary': {
       const lines = ch.filter(c => c.text.trim().length >= 10 && c.text.length <= 160);
@@ -185,13 +219,16 @@ export function buildChallenge(kind: ChallengeKind, card: ActionCard): Challenge
       return { quiz: { kind, question: `How many lines does this change ${verb}? (count the ${verb === 'add' ? 'green' : 'red'} lines)`, options: [], correctIndex: -1 }, answer: String(n) };
     }
     case 'explain': {
+      const keys = keywords(card);
+      // Nothing to name (binary or whitespace-only diff): any sentence would pass, so don't offer it.
+      if (!keys.length) return null;
       return {
         quiz: {
           kind,
           question: `In one sentence and your own words: what does this change do? Name at least one thing it changes (a table, function, file, setting…). At least ${MIN_EXPLAIN_WORDS} words.`,
           options: [], correctIndex: -1,
         },
-        answer: keywords(card).join('|'),
+        answer: keys.join('|'),
       };
     }
   }
@@ -247,7 +284,7 @@ export function checkAnswer(kind: ChallengeKind | undefined, expected: string, g
     case 'spot-line': return /^\d+$/.test(g.trim()) && expected.split(',').includes(String(Number(g.trim())));
     case 'type-in': {
       // A wrong answer counts as a rubber-stamp, so forgive one typo on longer names.
-      const a = norm(g);
+      const a = norm(g).replace(/["`\[\]]/g, '');
       return a !== '' && expected.split('|').some(e => e === a || (e.length >= 6 && oneEditApart(e, a)));
     }
     case 'canary': return norm(g) === expected;
@@ -260,7 +297,7 @@ export function checkAnswer(kind: ChallengeKind | undefined, expected: string, g
       const desc = norm(card.description);
       if (desc.length >= 15 && text.includes(desc)) return false;
       const keys = expected.split('|').filter(Boolean);
-      if (!keys.length) return true;
+      if (!keys.length) return false;
       const tokens = new Set(text.split(/[^a-z0-9_]+/));
       return keys.some(k => tokens.has(k) || (k.length >= 6 && text.includes(k)));
     }

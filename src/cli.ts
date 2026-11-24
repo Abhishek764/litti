@@ -13,11 +13,15 @@
  *   litti submit [description…]          send the current working-tree diff for review
  *   litti install <agent> [--dir <p>]    gate Claude Code / Codex / OpenCode with Litti
  *
- * Settings: LITTI_URL (default http://127.0.0.1:3847), LITTI_API_KEY, LITTI_ADMIN_KEY (review links).
+ * Settings: LITTI_URL (default http://127.0.0.1:<APPROVAL_SERVER_PORT from ~/.litti/config.env, else 3847>), LITTI_API_KEY, LITTI_ADMIN_KEY (review links).
  */
-import 'dotenv/config';
+import { config as loadDotenv } from 'dotenv';
 import { readFileSync } from 'node:fs';
 import { helpText } from './help.js';
+
+// The installed `litti` (main.ts) already loaded ~/.litti/config.env and sets LITTI_SKIP_CWD_ENV:
+// a project's own .env (its PORT, its keys) must not redirect the CLI. Repo dev runs still read .env.
+if (!process.env.LITTI_SKIP_CWD_ENV) loadDotenv({ quiet: true });
 
 const URL_BASE = (process.env.LITTI_URL || `http://127.0.0.1:${process.env.APPROVAL_SERVER_PORT || 3847}`).replace(/\/$/, '');
 
@@ -33,7 +37,8 @@ async function api<T = any>(method: string, path: string, body?: unknown): Promi
   try {
     res = await fetch(`${URL_BASE}${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(15000) });
   } catch {
-    throw new Error(`Can't reach Litti at ${URL_BASE}. Start it with "npm start" (or "npm run demo"), or set LITTI_URL.`);
+    throw new Error(`Can't reach Litti at ${URL_BASE}. Start it with "litti" (or "litti demo"), or set LITTI_URL.`
+      + (process.env.LITTI_URL ? '' : ` The port comes from APPROVAL_SERVER_PORT in ~/.litti/config.env (default 3847).`));
   }
   const text = await res.text();
   let data: any;
@@ -218,6 +223,10 @@ export async function run(argv: string[]): Promise<void> {
       console.log('\nRisky commands (commit, push, deploy, publish, migrations, destructive deletes) now need a Litti review.');
       console.log('The agent is denied at once with a review link; after approval it re-runs the same command.');
       console.log(`Hook talks to LITTI_URL (now ${URL_BASE}); set LITTI_API_KEY in the agent's environment if your server uses one.`);
+      console.log('\nNext steps:');
+      console.log(`  1. Restart ${list.map(a => ({ claude: 'Claude Code', codex: 'Codex', opencode: 'OpenCode' } as Record<string, string>)[a] ?? a).join(' / ')} so it loads the hook.`);
+      console.log('  2. Keep Litti running: run `litti` in another terminal if it is not already.');
+      console.log(`  3. Open ${URL_BASE}/ to review what your agent asks for.`);
       return;
     }
 

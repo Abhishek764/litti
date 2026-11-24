@@ -61,6 +61,9 @@ main{padding:16px 20px 80px;min-width:0}
 .compose{padding:8px 12px;display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap}
 .compose textarea{flex:1;min-width:220px;min-height:38px;resize:vertical;background:#0a0d12;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px;font:inherit}
 .empty{color:var(--muted);text-align:center;padding:80px 20px}
+.problem{color:var(--text)}.problem h2{margin:0 0 8px;font-size:18px}.problem p{color:var(--muted);max-width:560px;margin:0 auto 10px}
+.problem code{font-family:ui-monospace,monospace;background:#0a0d12;border:1px solid var(--border);border-radius:6px;padding:3px 8px}
+.hint{color:var(--muted);font-size:13px;padding:8px 12px}
 .toast{position:fixed;bottom:20px;right:20px;background:var(--raised);border:1px solid var(--border);border-radius:8px;padding:12px 16px;max-width:420px;display:none;z-index:9}
 .toast a{color:var(--blue)}
 @media (max-width:820px){.layout{grid-template-columns:1fr}nav{position:static;max-height:none;border-right:0;border-bottom:1px solid var(--border)}.thread{margin-left:12px}.file-head{top:0}}
@@ -184,9 +187,10 @@ function render(){
 const typing=()=>{const a=document.activeElement;return a&&a.tagName==='TEXTAREA'&&a.value.trim();};
 async function refresh(force){
   try{
-    const [c,n]=await Promise.all([fetch('/api/changes').then(r=>r.json()),fetch('/api/notes').then(r=>r.json())]);
+    const [c,n]=await Promise.all([fetch('/api/changes').then(r=>r.json()),fetch('/api/notes').then(r=>r.json()).catch(()=>({threads:[]}))]);
     const live=document.getElementById('live');
-    if(!c.ok){live.className='live stale';live.textContent=c.message||'error';return;}
+    if(!c.ok){showProblem(c);return;}
+    problem=false;
     live.className='live';live.textContent='live · '+new Date().toLocaleTimeString();
     document.getElementById('crumb').innerHTML='';
     document.getElementById('crumb').append(el('b','',c.repo.split(/[\\\\/]/).pop()),' · '+c.branch+' @ '+c.head+(c.truncated?' · truncated at 512 KB':''));
@@ -195,7 +199,23 @@ async function refresh(force){
     if(!force&&typing()){live.textContent='updates waiting — finish your note';return;}
     state={version:c.version,files:c.files,truncated:c.truncated,threads:n.threads||[],notesKey};
     render();
-  }catch{const live=document.getElementById('live');live.className='live stale';live.textContent='offline';}
+  }catch{showProblem({message:'Litti is not answering. Is it still running?'},true);}
+}
+// Errors replace every loading placeholder, so the page never sits on "loading…" under an error (USER-9).
+let problem=false;
+function showProblem(c,offline){
+  const live=document.getElementById('live');live.className='live stale';live.textContent=offline?'offline':'not available';
+  if(offline&&state.version)return; // keep the last good view; the badge says offline
+  if(problem===(c.message||''))return;
+  problem=c.message||'';state={version:'',files:[],threads:[]};
+  document.getElementById('crumb').textContent=c.code==='not-a-repo'?'not a git repository':'changes unavailable';
+  document.getElementById('totals').textContent='';
+  document.getElementById('files').replaceChildren(el('div','hint','No files to show.'));
+  const box=el('div','empty problem');box.setAttribute('role','alert');
+  box.append(el('h2','',c.code==='not-a-repo'?'This folder is not a git repository':'Could not read changes'),el('p','',c.message||'Unknown error.'));
+  if(c.folder)box.append(el('p','',''),el('code','',c.folder));
+  document.getElementById('main').replaceChildren(box);
+  document.getElementById('review').disabled=true;
 }
 document.getElementById('review').onclick=async()=>{
   const b=document.getElementById('review');b.disabled=true;

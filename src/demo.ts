@@ -1,5 +1,5 @@
 /**
- * Demo runner. `npm run demo` starts Litti with three sample actions, a fresh
+ * Demo runner. `litti demo` starts Litti with three sample actions, a fresh
  * database and typed reviewer names allowed. Notifications print to the
  * terminal (and go to LITTI_NOTIFY_WEBHOOK if set).
  */

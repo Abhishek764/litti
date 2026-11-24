@@ -32,7 +32,7 @@ async function main() {
     await app.listen({ port: PORT, host: HOST });
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'EADDRINUSE') {
-      console.error(`❌ Port ${PORT} is already in use. Is Litti already running? Open ${BASE}/ or start on another port: litti start --port ${PORT + 1}`);
+      console.error(`❌ Port ${PORT} is already in use. Is Litti already running? Open ${BASE}/ or start on another port: litti start --port ${PORT >= 65535 ? PORT - 1 : PORT + 1}`);
       process.exit(1);
     }
     throw err;

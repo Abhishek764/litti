@@ -2,16 +2,30 @@
 import type { PendingAction } from '../types.js';
 
 const esc = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
-const TIER = ['🟢 Tier 0', '🟡 Tier 1', '🟠 Tier 2', '🔴 Tier 3'];
+const TIER = ['Tier 0 · auto', 'Tier 1 · low', 'Tier 2 · high', 'Tier 3 · critical'];
 
-export function renderInbox(pending: PendingAction[], baseUrl: string): string {
+/** "just now", "5 min ago", "3 h ago", "2 days ago". */
+export function age(createdAt: string, now = Date.now()): string {
+  const t = Date.parse(createdAt);
+  if (!Number.isFinite(t)) return 'unknown age';
+  const s = Math.max(0, Math.round((now - t) / 1000));
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
+  const d = Math.floor(s / 86400);
+  return `${d} day${d === 1 ? '' : 's'} ago`;
+}
+
+export function renderInbox(all: PendingAction[], baseUrl: string, now = Date.now()): string {
+  // Only actions still waiting: approved, rejected, failed or superseded ones never show here.
+  const pending = all.filter(p => p.status === 'pending');
   const rows = pending.map(p => `
-    <a class="row" href="${esc(`${baseUrl}/approve/${p.id}`)}">
-      <span class="tier t${p.tier}">${TIER[p.tier]}</span>
+    <li><a class="row" href="${esc(`${baseUrl}/approve/${p.id}`)}">
+      <span class="tier t${p.tier}">${TIER[p.tier] ?? `Tier ${p.tier}`}</span>
       <span class="desc"><b>${esc(p.actionCard.action)}</b> · ${esc(p.actionCard.description)}<br>
-        <small>by ${esc(p.actionCard.agent)} · ${esc(p.actionCard.touchedPaths.slice(0, 3).join(', ') || 'no paths')} · ${esc(new Date(p.createdAt).toLocaleString())}</small></span>
-      <span class="prog">${p.currentApprovals.length}/${p.requiredApprovers}</span>
-    </a>`).join('');
+        <small>Requested by <b class="who">${esc(p.actionCard.agent || 'unknown')}</b> · <time datetime="${esc(p.createdAt)}" title="${esc(p.createdAt)}">${esc(age(p.createdAt, now))}</time> · ${esc(p.actionCard.touchedPaths.slice(0, 3).join(', ') || 'no paths')}</small></span>
+      <span class="prog" aria-label="${p.currentApprovals.length} of ${p.requiredApprovers} approvals">${p.currentApprovals.length}/${p.requiredApprovers}</span>
+    </a></li>`).join('');
 
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -25,7 +39,11 @@ export function renderInbox(pending: PendingAction[], baseUrl: string): string {
   .row { display:flex; gap:16px; align-items:center; padding:14px 16px; background:var(--card); border:1px solid var(--border);
          border-radius:10px; margin-bottom:10px; color:inherit; text-decoration:none }
   .row:hover { border-color:var(--accent) }
-  .tier { white-space:nowrap; font-weight:600; min-width:84px } .desc { flex:1; min-width:0 } small { color:var(--muted) }
+  .tier { white-space:nowrap; font-weight:700; font-size:12px; letter-spacing:.3px; padding:3px 10px; border-radius:6px; color:#0a0d12; min-width:120px; text-align:center }
+  .t0 { background:#3fb950 } .t1 { background:#e3b341 } .t2 { background:#f0883e } .t3 { background:#ff7b72 }
+  ul.list { list-style:none; margin:0; padding:0 }
+  a:focus-visible, .row:focus-visible { outline:2px solid var(--accent); outline-offset:2px }
+  .more { color:var(--muted); font-size:14px; margin-top:16px } .more a { color:var(--accent) } .desc { flex:1; min-width:0 } small { color:var(--muted) }
   .prog { font-family:ui-monospace,monospace; color:var(--muted) }
   .empty { padding:40px; text-align:center; color:var(--muted); border:1px dashed var(--border); border-radius:10px }
   .welcome { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:22px 24px; margin-top:8px }
@@ -38,10 +56,11 @@ export function renderInbox(pending: PendingAction[], baseUrl: string): string {
   .step a { color:var(--accent) }
 </style></head>
 <body><main>
-  <nav style="display:flex;align-items:center;gap:8px"><a href="/" style="margin-right:20px"><img src="/brand/litti-logo.svg" alt="Litti" height="30" style="display:block;height:30px;width:auto"></a><a href="/">Inbox</a><a href="/changes">Changes</a><a href="/integrations">Integrations</a><a href="/dashboard.html">Dashboard</a><a href="/docs">Docs</a></nav>
+  <nav aria-label="Main" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><a href="/" style="margin-right:20px"><img src="/brand/litti-logo.svg" alt="Litti" height="30" style="display:block;height:30px;width:auto"></a><a href="/">Inbox</a><a href="/changes">Changes</a><a href="/integrations">Integrations</a><a href="/dashboard.html">Dashboard</a><a href="/docs">Docs</a></nav>
   <h1 style="margin-top:24px">Waiting for review</h1>
   <p class="sub">Open an action, read the diff, pass the check. Nothing runs until enough reviewers pass.</p>
-  ${rows || `<div class="empty">✅ Nothing waiting for review.</div>
+  ${rows ? `<ul class="list">${rows}</ul>
+  <p class="more"><a href="/changes">Changes view</a> shows everything your agent changed, reviewed or not · <a href="/integrations">Integrations</a> post new reviews to Slack, Discord or Jira.</p>` : `<div class="empty">✅ Nothing waiting for review.</div>
   <section class="welcome">
     <h2>Get started</h2>
     <p>Three steps and your coding agent can't ship anything risky without a human who read it.</p>

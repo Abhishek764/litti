@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 process.env.SECRET_KEY = 'changes-test-secret-'.repeat(3);
 const repo = mkdtempSync(join(tmpdir(), 'litti-changes-'));
@@ -11,6 +11,8 @@ process.env.LITTI_AGENT_NAME = 'claude-code';
 import { initDb, getPending } from '../src/chain/db.js';
 import { buildServer, setNotifier } from '../src/approval/server.js';
 import { readChanges, splitDiff } from '../src/changes/git.js';
+import { notARepoMessage } from '../src/changes/routes.js';
+import { renderChangesPage } from '../src/changes/page.js';
 
 const git = (...args: string[]) => execFileSync('git', ['-C', repo, ...args], { stdio: 'pipe' }).toString();
 git('init', '-q');
@@ -149,8 +151,29 @@ try {
     try {
       const r = await app.inject({ method: 'GET', url: '/api/changes' });
       // tmpdir may itself sit inside a repo on some machines; only assert when it doesn't.
-      if (r.statusCode !== 200) assert.match(r.json().message, /not a git repository/);
+      if (r.statusCode !== 200) {
+        assert.equal(r.statusCode, 409);
+        assert.equal(r.json().code, 'not-a-repo');
+        assert.equal(r.json().folder, resolve(tmpdir()));
+        assert.match(r.json().message, /LITTI_REPO_PATH points to .+, which isn't a git repository/);
+        const review = await app.inject({ method: 'POST', url: '/api/changes/review', headers: ui, payload: {} });
+        assert.equal(review.json().code, 'not-a-repo');
+      }
     } finally { process.env.LITTI_REPO_PATH = prev; }
+    // Started in a plain folder without LITTI_REPO_PATH: name the folder and say how to fix it (USER-9).
+    const msg = notARepoMessage({ ...process.env, LITTI_REPO_PATH: '' });
+    assert.match(msg, new RegExp(`Litti was started in ${process.cwd().replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')}, which isn't a git repository`));
+    assert.match(msg, /start `litti` from your project folder/);
+    assert.match(msg, /LITTI_REPO_PATH in ~\/\.litti\/config\.env/);
+  });
+
+  await step('changes page: an error replaces every loading placeholder and disables review', () => {
+    const html = renderChangesPage({ reviewer: null });
+    const script = html.match(/<script>([\s\S]*?)<\/script>/)![1];
+    assert.match(script, /function showProblem/);
+    assert.match(script, /if\(!c\.ok\)\{showProblem\(c\);return;\}/);
+    for (const id of ['crumb', 'files', 'main', 'review']) assert.match(script.slice(script.indexOf('function showProblem')), new RegExp(`getElementById\\('${id}'\\)`), id);
+    assert.match(script, /setAttribute\('role','alert'\)/);
   });
 } finally {
   await app.close();
